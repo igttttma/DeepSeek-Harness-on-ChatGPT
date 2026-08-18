@@ -7,7 +7,7 @@
 
 **DeepSeek Harness on ChatGPT 直接复用本机 ChatGPT Desktop 的 Node.js 与 Electron 运行环境，因此运行本项目提供的 EXE 前，电脑上必须已经安装 Microsoft Store 版 ChatGPT 桌面应用。** 
 
-生成的安装包只携带 ChatGPT 中不存在、且 DeepSeek Harness 运行时确实需要的最小闭包；Node、Electron、Chromium、部分 npm 模块和原生组件通过 junction/symlink 直接复用现有 ChatGPT 安装。安装和首次启动阶段 **零联网下载依赖**，不会临时下载 Node、Electron 或 npm 包。安装器会先检查本机 ChatGPT 是否提供完整接口，检查通过才释放程序并建立链接；检查失败则直接退出。构建过程本身需要 clone 上游和安装构建依赖，DeepSeek Harness 调用模型 API 时也会产生正常网络请求，这两者不属于“零联网安装”。
+生成的安装包只携带 ChatGPT 中不存在、且 DeepSeek Harness 运行时确实需要的最小闭包；Node、Electron、Chromium、部分 npm 模块和原生组件通过 junction/symlink 直接复用现有 ChatGPT 安装。安装和首次启动阶段 **零联网下载依赖**，不会临时下载 Node、Electron 或 npm 包。安装器会先检查本机 ChatGPT 是否提供完整接口，检查通过才释放程序并建立链接；检查失败则直接退出。
 
 ## 为什么这么小
 
@@ -151,6 +151,5 @@ dist/                        所有生成物，不进入 Git
 
 ## 发布注意
 
-- 安装器和启动器当前未签名，公开下载可能触发 SmartScreen；正式发布建议进行 Authenticode 签名。
+- 安装器和启动器当前未签名，公开下载可能触发 SmartScreen。
 - 本仓库只提供打包逻辑。DeepSeek Harness、ChatGPT Desktop 及其依赖仍受各自许可证和服务条款约束。
-- 建议随 GitHub Release 保留 `release-manifest.json`，用于审计实际上游 commit、裁剪结果和 ChatGPT fork 要求。
