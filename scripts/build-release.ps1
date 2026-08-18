@@ -1059,8 +1059,6 @@ Write-Step 'stage runtime controller, shell, and launchers'
 $prSrc = Join-Path $repoRoot 'src\runtime'
 $prDst = Join-Path $OutDir 'parasite-runtime'
 Ensure-Dir $prDst
-Copy-FileTo (Join-Path $prSrc 'dsh.ps1') (Join-Path $prDst 'dsh.ps1')
-Copy-FileTo (Join-Path $prSrc 'codex-requirements.ps1') (Join-Path $prDst 'codex-requirements.ps1')
 if (Test-Path (Join-Path $prSrc 'dsh-taskbar-icon.exe')) {
     Copy-FileTo (Join-Path $prSrc 'dsh-taskbar-icon.exe') (Join-Path $prDst 'dsh-taskbar-icon.exe')
 }
@@ -1068,24 +1066,46 @@ $resSrc = Join-Path $repoRoot 'src\shell\resources'
 $resDst = Join-Path $prDst 'owl-host\resources'
 if (-not (Test-Path -LiteralPath $resSrc)) { throw ('missing owl-host resources: ' + $resSrc) }
 Invoke-Robocopy $resSrc $resDst @() | Out-Null
+$nodeForTools = Get-NodeExecutable
+if (-not $nodeForTools) { throw 'Node.js is required to build the Electron app.asar' }
+& $nodeForTools (Join-Path $repoRoot 'scripts\lib\pack-asar.js') (Join-Path $resSrc 'app') (Join-Path $resDst 'app.asar')
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $resDst 'app.asar') -PathType Leaf)) {
+    throw ('app.asar generation failed with exit code ' + $LASTEXITCODE)
+}
+
+$csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+if (-not (Test-Path -LiteralPath $csc -PathType Leaf)) { throw ('C# compiler missing: ' + $csc) }
+$sma = Get-ChildItem (Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL\System.Management.Automation') `
+    -Filter 'System.Management.Automation.dll' -Recurse -File -ErrorAction SilentlyContinue |
+    Select-Object -First 1 -ExpandProperty FullName
+if (-not $sma) { throw 'Windows PowerShell automation assembly is missing' }
+$launcherPath = Join-Path $OutDir 'DeepSeek Harness (on ChatGPT).exe'
+$launcherSources = @(Get-ChildItem (Join-Path $repoRoot 'src\installer') -Filter '*.cs' -File | Select-Object -ExpandProperty FullName)
+& $csc /nologo /target:winexe /platform:x64 /optimize+ `
+    /reference:System.Windows.Forms.dll /reference:System.Management.dll /reference:System.Web.Extensions.dll `
+    ('/reference:' + $sma) ('/win32icon:' + (Join-Path $resDst 'app\icon.ico')) `
+    ('/out:' + $launcherPath) $launcherSources
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
+    throw ('launcher compilation failed with exit code ' + $LASTEXITCODE)
+}
 
 $releaseCmds = @{
     'start-dsh-desktop.cmd' = @'
 @echo off
 cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0parasite-runtime\dsh.ps1" start
+"%~dp0DeepSeek Harness (on ChatGPT).exe" start
 exit /b %ERRORLEVEL%
 '@
     'stop-dsh-desktop.cmd' = @'
 @echo off
 cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0parasite-runtime\dsh.ps1" stop
+"%~dp0DeepSeek Harness (on ChatGPT).exe" stop
 exit /b %ERRORLEVEL%
 '@
     'cleanup-admin.cmd' = @'
 @echo off
 cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0parasite-runtime\dsh.ps1" cleanup
+"%~dp0DeepSeek Harness (on ChatGPT).exe" cleanup
 exit /b %ERRORLEVEL%
 '@
 }
@@ -1103,9 +1123,9 @@ Windows x64 payload. Requires Microsoft Store ChatGPT/Codex (OpenAI.Codex) with 
 
 ## Start
 - Double-click start-dsh-desktop.cmd
-- Or: powershell -NoProfile -ExecutionPolicy Bypass -File .\parasite-runtime\dsh.ps1 start
+- Or: run `DeepSeek Harness (on ChatGPT).exe`
 
-The controller requests UAC only for junction/symlink creation, then starts DSH as the normal user.
+The launcher EXE requests UAC for junction/symlink creation, then starts DSH as the normal user. No PowerShell script runs on the target machine.
 
 On first start the controller will:
 1. Detect the local Codex package
@@ -1236,5 +1256,5 @@ if (-not $SkipZip) {
 Write-Step 'DONE'
 Write-Host ''
 Write-Host ('Stage : ' + $OutDir)
-Write-Host ('Run   : powershell -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $OutDir 'parasite-runtime\dsh.ps1') + '" start')
+Write-Host ('Run   : "' + (Join-Path $OutDir 'DeepSeek Harness (on ChatGPT).exe') + '"')
 if ($zipPath) { Write-Host ('Zip   : ' + $zipPath) }

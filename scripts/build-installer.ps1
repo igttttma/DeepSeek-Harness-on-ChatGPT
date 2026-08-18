@@ -71,9 +71,8 @@ if (-not $SkipReleaseBuild) {
 }
 
 $manifestPath = Join-Path $ReleaseDir 'dsh-runtime\meta\release-manifest.json'
-$controllerPath = Join-Path $ReleaseDir 'parasite-runtime\dsh.ps1'
-$requirementsPath = Join-Path $ReleaseDir 'parasite-runtime\codex-requirements.ps1'
-foreach ($requiredPath in @($manifestPath, $controllerPath, $requirementsPath)) {
+$stageLauncherPath = Join-Path $ReleaseDir 'DeepSeek Harness (on ChatGPT).exe'
+foreach ($requiredPath in @($manifestPath, $stageLauncherPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) { throw ('release payload missing: ' + $requiredPath) }
 }
 $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -81,9 +80,14 @@ $version = [string]$manifest.version
 if (-not $version) { throw 'release manifest has no version' }
 
 Write-Step 'validate local ChatGPT dependency surface'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'src\installer\install-preflight.ps1') `
-    -ManifestPath $manifestPath -RequirementsScript $requirementsPath
-if ($LASTEXITCODE -ne 0) { throw ('ChatGPT preflight failed with exit code ' + $LASTEXITCODE) }
+$preflightResult = Join-Path $env:TEMP ('dsh-build-preflight-' + [guid]::NewGuid().ToString('N') + '.txt')
+$preflight = Start-Process -FilePath $stageLauncherPath -ArgumentList @('preflight', ('"' + $manifestPath + '"'), ('"' + $preflightResult + '"')) `
+    -WindowStyle Hidden -Wait -PassThru
+if ($preflight.ExitCode -ne 0) {
+    $details = if (Test-Path -LiteralPath $preflightResult) { Get-Content -LiteralPath $preflightResult -Raw } else { '' }
+    throw ('ChatGPT preflight failed with exit code ' + $preflight.ExitCode + ': ' + $details)
+}
+Remove-Item -LiteralPath $preflightResult -Force -ErrorAction SilentlyContinue
 
 $tempRoot = Join-Path $env:TEMP ('dsh-installer-' + [guid]::NewGuid().ToString('N'))
 $payloadDir = Join-Path $tempRoot 'payload'
@@ -118,46 +122,44 @@ try {
     if (-not (Test-Path -LiteralPath $csc -PathType Leaf)) { throw ('C# compiler missing: ' + $csc) }
     $launcherPath = Join-Path $payloadDir 'DeepSeek Harness (on ChatGPT).exe'
     $iconPath = Join-Path $payloadDir 'parasite-runtime\owl-host\resources\app\icon.ico'
+    $sma = Get-ChildItem (Join-Path $env:WINDIR 'Microsoft.NET\assembly\GAC_MSIL\System.Management.Automation') `
+        -Filter 'System.Management.Automation.dll' -Recurse -File -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty FullName
+    if (-not $sma) { throw 'Windows PowerShell automation assembly is missing' }
+    $launcherSources = @(Get-ChildItem (Join-Path $repoRoot 'src\installer') -Filter '*.cs' -File | Select-Object -ExpandProperty FullName)
     & $csc /nologo /target:winexe /platform:x64 /optimize+ `
-        /reference:System.Windows.Forms.dll `
+        /reference:System.Windows.Forms.dll /reference:System.Management.dll /reference:System.Web.Extensions.dll `
+        ('/reference:' + $sma) `
         ('/win32icon:' + $iconPath) `
         ('/out:' + $launcherPath) `
-        (Join-Path $repoRoot 'src\installer\DSHDesktopLauncher.cs')
+        $launcherSources
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $launcherPath)) {
         throw ('launcher compilation failed with exit code ' + $LASTEXITCODE)
     }
 
-    $portableReadme = @'
-# DeepSeek Harness (on ChatGPT) Portable
-
-Extract the entire archive to a normal writable directory, then run `DeepSeek Harness (on ChatGPT).exe`.
-
-Requirements:
-- Windows x64
-- Microsoft Store ChatGPT/Codex installed for the current user
-- Approve UAC when link repair is required
-
-Every start validates the local ChatGPT runtime and recreates stale junctions, symlinks, and copied host files. Existing ChatGPT.exe processes are never modified or terminated.
-'@
-    [IO.File]::WriteAllText(
-        (Join-Path $payloadDir 'README.portable.md'),
-        ($portableReadme.Trim() + [Environment]::NewLine),
-        [Text.UTF8Encoding]::new($false))
-
     $portablePath = Join-Path $PortableOutputDir ('DeepSeek-Harness-on-ChatGPT-Portable-' + $version + '-win-x64.zip')
     if (Test-Path -LiteralPath $portablePath) { Remove-Item -LiteralPath $portablePath -Force }
+    $portableExcludedNames = @(
+        'cleanup-admin.cmd',
+        'README.portable.md',
+        'README.release.md',
+        'start-dsh-desktop.cmd',
+        'stop-dsh-desktop.cmd'
+    )
+    $portableEntries = @(Get-ChildItem -LiteralPath $payloadDir -Force |
+        Where-Object { $_.Name -notin $portableExcludedNames })
     Write-Step 'compress portable package'
     $tar = Get-Command tar -ErrorAction SilentlyContinue
     if ($tar) {
         Push-Location $payloadDir
         try {
-            & $tar.Source -a -c -f $portablePath *
+            & $tar.Source -a -c -f $portablePath @($portableEntries.Name)
             if ($LASTEXITCODE -ne 0) { throw ('portable archive failed with exit code ' + $LASTEXITCODE) }
         } finally {
             Pop-Location
         }
     } else {
-        Compress-Archive -Path (Join-Path $payloadDir '*') -DestinationPath $portablePath -Force
+        Compress-Archive -Path $portableEntries.FullName -DestinationPath $portablePath -Force
     }
 
     $template = Get-Content -LiteralPath (Join-Path $repoRoot 'src\installer\dsh-desktop.iss') -Raw -Encoding UTF8
@@ -166,7 +168,6 @@ Every start validates the local ChatGPT runtime and recreates stale junctions, s
         '@@OUTPUT_DIR@@'      = Convert-ToInnoLiteral $OutputDir
         '@@PRODUCT_VERSION@@' = Convert-ToInnoLiteral $version
         '@@PRODUCT_ICON@@'    = Convert-ToInnoLiteral $iconPath
-        '@@PREFLIGHT_SCRIPT@@'= Convert-ToInnoLiteral (Join-Path $repoRoot 'src\installer\install-preflight.ps1')
     }
     foreach ($replacement in $replacements.GetEnumerator()) {
         $template = $template.Replace($replacement.Key, $replacement.Value)

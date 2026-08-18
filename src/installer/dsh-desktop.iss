@@ -2,7 +2,6 @@
 #define OutputDir "@@OUTPUT_DIR@@"
 #define ProductVersion "@@PRODUCT_VERSION@@"
 #define ProductIcon "@@PRODUCT_ICON@@"
-#define PreflightScript "@@PREFLIGHT_SCRIPT@@"
 
 [Setup]
 AppId={{CFE96916-C62E-4D38-91A2-E6596A505448}
@@ -34,8 +33,7 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 
 [Files]
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#PreflightScript}"; DestDir: "{tmp}"; DestName: "dsh-install-preflight.ps1"; Flags: dontcopy solidbreak
-Source: "{#PayloadDir}\parasite-runtime\codex-requirements.ps1"; DestDir: "{tmp}"; DestName: "dsh-codex-requirements.ps1"; Flags: dontcopy solidbreak
+Source: "{#PayloadDir}\DeepSeek Harness (on ChatGPT).exe"; DestDir: "{tmp}"; DestName: "dsh-preflight.exe"; Flags: dontcopy solidbreak
 Source: "{#PayloadDir}\dsh-runtime\meta\release-manifest.json"; DestDir: "{tmp}"; DestName: "dsh-release-manifest.json"; Flags: dontcopy solidbreak
 
 [Icons]
@@ -66,16 +64,12 @@ var
   Details: AnsiString;
   Args: String;
 begin
-  ExtractTemporaryFile('dsh-install-preflight.ps1');
-  ExtractTemporaryFile('dsh-codex-requirements.ps1');
+  ExtractTemporaryFile('dsh-preflight.exe');
   ExtractTemporaryFile('dsh-release-manifest.json');
   ResultFile := ExpandConstant('{tmp}\dsh-preflight-result.txt');
   DeleteFile(ResultFile);
-  Args := '-NoProfile -ExecutionPolicy Bypass -File "' +
-    ExpandConstant('{tmp}\dsh-install-preflight.ps1') + '" -ManifestPath "' +
-    ExpandConstant('{tmp}\dsh-release-manifest.json') + '" -RequirementsScript "' +
-    ExpandConstant('{tmp}\dsh-codex-requirements.ps1') + '" -ResultPath "' + ResultFile + '"';
-  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Args, '', SW_HIDE,
+  Args := 'preflight "' + ExpandConstant('{tmp}\dsh-release-manifest.json') + '" "' + ResultFile + '"';
+  if not Exec(ExpandConstant('{tmp}\dsh-preflight.exe'), Args, '', SW_HIDE,
     ewWaitUntilTerminated, ExitCode) then
   begin
     Result := 'Unable to run the ChatGPT compatibility check.';

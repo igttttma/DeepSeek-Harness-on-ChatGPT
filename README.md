@@ -12,11 +12,11 @@
 
 | 方案 | 下载文件 | 静态展开 | 首次启动后实际新增 | 说明 |
 |---|---:|---:|---:|---|
-| 本项目安装器 | **8.89 MiB** | 约 **39.12 MiB** | 约 **45.70 MiB** | 首次启动额外复制 6.59 MiB stub/DLL；链接目标不重复占用磁盘 |
-| 本项目绿色便携 ZIP | **14.91 MiB** | **39.12 MiB** | 约 **45.70 MiB** | 与安装版使用同一静态 payload，不注册系统安装项 |
+| 本项目安装器 | **8.89 MiB** | 约 **39.17 MiB** | 约 **45.76 MiB** | 首次启动额外复制 6.59 MiB stub/DLL；链接目标不重复占用磁盘 |
+| 本项目绿色便携 ZIP | **14.95 MiB** | **39.17 MiB** | 约 **45.76 MiB** | 与安装版使用同一静态 payload，不注册系统安装项 |
 | 等价“零依赖”自包含包 | 取决于压缩值 | 约 **692.61 MiB** | 约 **692.61 MiB** | 必须额外打入当前实际复用的 653.53 MiB Node/Electron/npm 闭包 |
 
-相同功能闭包下，本项目首次启动后的新增占用约为自包含方案的 **1/15**，避免重复存放约 **646.9 MiB** 已由 ChatGPT 提供的文件。Chromium profile、会话和缓存属于运行数据，不计入任何一行。
+相同功能闭包下，本项目首次启动后的新增占用约为自包含方案的 **1/15**，避免重复存放约 **646.85 MiB** 已由 ChatGPT 提供的文件。Chromium profile、会话和缓存属于运行数据，不计入任何一行。
 
 实际复用内容包括：
 
@@ -40,13 +40,13 @@ DeepSeek-Harness-on-ChatGPT-Setup-<version>-win-x64.exe
 
 1. 自动探测当前用户安装的最高版本 `OpenAI.Codex*`。
 2. 验证 Node、Electron、所有 npm junction 和 native asset fork 是否齐全。
-3. 释放约 39.12 MiB 的 DeepSeek Harness 增量 payload。
-4. 安装器启动时请求 UAC；安装过程在安装器内部创建 manifest 声明的 junction/symlink，并同步必要 stub/DLL，不再由 PowerShell 单独请求权限。
+3. 释放约 39.17 MiB 的 DeepSeek Harness 增量 payload。
+4. 安装器启动时请求 UAC；安装过程由 C# controller 创建 manifest 声明的 junction/symlink，并同步必要 stub/DLL，不执行运行时 PS1。
 5. 注册标准 Windows 应用、开始菜单、桌面快捷方式和卸载器。
 
 每次启动都会重新验证 ChatGPT 路径和能力。ChatGPT 更新后，启动器会自动修复失效链接和重新同步复制文件；不会终止、替换或修改已经运行的 `ChatGPT.exe`。
 
-绿色版解压后直接运行 `DeepSeek Harness (on ChatGPT).exe`。启动器 EXE 会以自身名义请求 UAC，再执行相同的依赖验证和链接修复逻辑；PowerShell 不直接触发提权。绿色版不注册安装项或快捷方式。
+绿色版解压后直接运行 `DeepSeek Harness (on ChatGPT).exe`。启动器 EXE 会以自身名义请求 UAC，再由内置 C# controller 执行相同的依赖验证和链接修复逻辑；目标机启动链不执行 PS1，也不创建 `powershell.exe` 子进程。绿色版不注册安装项或快捷方式。
 
 ## 最小构建思路
 
@@ -133,9 +133,9 @@ build.ps1                    clone -> official build -> prune -> package
 config/release-blacklist.json
 scripts/                     构建、闭包分析和安装器生成
 scripts/lib/                 npm/workspace 图剪枝器
-src/runtime/                 安装后运行控制器
+src/runtime/                 任务栏图标辅助程序
 src/shell/                   最小 Electron shell 覆盖层
-src/installer/               C# 启动器与 Inno Setup 定义
+src/installer/               C# controller、启动器与 Inno Setup 定义
 assets/branding/             图标资产
 docs/                        依赖与发布设计
 .work/                       本机构建缓存，不进入 Git

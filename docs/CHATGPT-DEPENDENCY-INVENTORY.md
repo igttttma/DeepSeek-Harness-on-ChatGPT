@@ -7,7 +7,7 @@
 - `scripts/build-official.ps1` — 官方源码完整构建 + 最小闭包
 - `scripts/build-release.ps1` — 从已构建官方树生成 `dist/stage`
 - `scripts/apply-cg-forks.ps1` — 从管理员终端调用 stage 控制器，补 npm junction + rg / node-pty 链接；脚本自身不请求 UAC
-- `src/runtime/dsh.ps1` — 随产物发布的单一控制器；启动时探测包版本、重建 junction/symlink
+- `src/installer/*.cs` — 编译进主 EXE 的 controller；探测包、重建链接、同步 host、启动/停止业务进程
 - 机器可读清单：`dist/stage/dsh-runtime/meta/release-manifest.json`
 
 ---
@@ -19,7 +19,7 @@
 | PackageFullName | `OpenAI.Codex_26.814.5167.0_x64__2p2nqsd0c76g0` |
 | Version | `26.814.5167.0` |
 | 安装根 | `%ProgramFiles%\\WindowsApps\\OpenAI.Codex_*` |
-| 探测方式 | `Get-AppxPackage OpenAI.Codex*`，取最高版本且含 `cua_node\\bin\\node.exe` 与 `app\\chrome.dll` |
+| 探测方式 | 读取当前用户 AppModel Repository，取最高 `OpenAI.Codex*` 版本并逐项验证运行接口 |
 
 启动器**不写死版本号**；换包后自动重挂链接。上表是文档编写时的样例，也写入 manifest 的 `chatgptPackageExample`。
 
@@ -94,7 +94,7 @@ app/
 - stub / `chrome_elf` 仍 **Copy**（包执行保护 + 改名需要）
 - owl-host 会清掉当前包里已不存在的孤儿本地目录（如旧版 `Dictionaries/`）
 
-入口：产物中的 `parasite-runtime/dsh.ps1` / 仓库中的 `scripts/apply-cg-forks.ps1`。
+发布入口：产物根目录的 `DeepSeek Harness (on ChatGPT).exe`。`scripts/apply-cg-forks.ps1` 仅供构建机开发调试，不进入发布包。
 
 ---
 
@@ -182,7 +182,7 @@ app/
 
 1. 上游 DSH 升级：运行 `build.ps1 -Ref <ref>`，由脚本更新 `.work/deepseek-harness`。
 2. ChatGPT 升级：一般无需重打业务包；启动自动换链接。若 `cua_node` 去掉某包，manifest 会 WARN。
-3. 仅补链接：`scripts/apply-cg-forks.ps1 -DshRoot dist/stage/dsh-runtime`。
+3. 仅补链接：从管理员终端运行 `scripts/apply-cg-forks.ps1`。
 4. 禁用资源管理器递归删除含 WindowsApps junction 的 `node_modules`。
 5. 细节以 `release-manifest.json` 为准；本文是人类可读摘要。
 
@@ -195,5 +195,5 @@ app/
 | npm 复用 | `cgJunctions[]` → Junction 到 `cua_node\\bin\\node_modules\\…` |
 | 资产 fork | `cgAssetForks[]` → 文件 SymbolicLink / 目录 Junction |
 | owl-host | 目录 Junction、文件 SymbolicLink；`owl-stub.exe`+`chrome_elf.dll` Copy |
-| 权限 | `dsh.ps1 start` 仅为 junction/symlink 创建请求 UAC，业务进程仍以普通用户启动 |
+| 权限 | 主 EXE 仅为 junction/symlink 创建请求 UAC，业务进程仍以普通用户启动；运行链不执行 PS1 |
 | 版本漂移 | `.codex-package-full-name` + stub 尺寸；孤儿本地项强制 resync |

@@ -6,6 +6,7 @@ const owlHostDir = path.dirname(process.resourcesPath);
 const runtimeDir = path.dirname(owlHostDir);
 const rootDir = path.dirname(runtimeDir);
 const iconHelper = path.join(runtimeDir, 'dsh-taskbar-icon.exe');
+const launcher = path.join(rootDir, 'DeepSeek Harness (on ChatGPT).exe');
 const customIcon = path.join(rootDir, 'icon', 'deepseek.png');
 const HOME = 'http://127.0.0.1:3080';
 
@@ -64,13 +65,8 @@ function setTaskbarBadge(on) {
 }
 
 function stopDshBackend() {
-  const script = "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | ForEach-Object { $cl = [string]$_.CommandLine; if ($cl -match 'dsh-runtime\\\\apps\\\\cli\\\\lib\\\\bin\\.js') { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }";
   try {
-    require('child_process').execFileSync(
-      process.env.SystemRoot + '\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { windowsHide: true, timeout: 8000 }
-    );
+    require('child_process').execFileSync(launcher, ['stop-backend'], { windowsHide: true, timeout: 8000 });
   } catch (e) {}
 }
 
