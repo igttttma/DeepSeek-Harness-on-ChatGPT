@@ -1,0 +1,18 @@
+# Local official-source clone and temporary runtime state
+.work/
+
+# Generated stages, installers, portable archives, and legacy output paths
+dist/
+release/
+
+# Legacy local layouts from pre-release development
+vendor/
+parasite-runtime/
+tools/
+
+# Runtime and tool residue
+*.log
+*.tmp
+Thumbs.db
+Desktop.ini
+
