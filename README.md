@@ -1,5 +1,8 @@
 # DeepSeek Harness on ChatGPT
 
+![fig](.\fig.png)
+*ChatGPT的折叠图标上竟然出现了...蓝色鲸鱼...?*
+
 **DeepSeek Harness on ChatGPT 直接复用本机 ChatGPT Desktop 的 Node.js 与 Electron 运行环境，因此运行本项目提供的 EXE 前，电脑上必须已经安装 Microsoft Store 版 ChatGPT 桌面应用。** 本仓库提供的是一套可复现的 **DeepSeek Harness 最小化构建与打包脚本**，不是 DeepSeek Harness fork，也不提交上游源码；构建产物是最小化、安装阶段零联网下载依赖的 Windows x64 **增量安装包**与绿色便携包。
 
 生成的安装包只携带 ChatGPT 中不存在、且 DeepSeek Harness 运行时确实需要的最小闭包；Node、Electron、Chromium、部分 npm 模块和原生组件通过 junction/symlink 直接复用现有 ChatGPT 安装。安装和首次启动阶段 **零联网下载依赖**，不会临时下载 Node、Electron 或 npm 包。安装器会先检查本机 ChatGPT 是否提供完整接口，检查通过才释放程序并建立链接；检查失败则直接退出。构建过程本身需要 clone 上游和安装构建依赖，DeepSeek Harness 调用模型 API 时也会产生正常网络请求，这两者不属于“零联网安装”。
@@ -53,7 +56,7 @@ DeepSeek-Harness-on-ChatGPT-Setup-<version>-win-x64.exe
 ```mermaid
 flowchart TB
     A[Clone 官方 DeepSeek Harness] --> B[官方构建<br/>pnpm install / build]
-    B --> C[功能黑名单]
+    B --> C[黑名单裁包]
     C --> D[Windows x64<br/>import 图剪枝]
     E[本机 ChatGPT Desktop] --> F[依赖能力比对]
     D --> F
@@ -68,9 +71,9 @@ flowchart TB
 4. 将闭包与本机 ChatGPT Desktop 比对：可复用内容写入 junction/symlink manifest，只把 ChatGPT 没有的依赖装入私有 `node_modules`。
 5. 运行多 provider import smoke 和 ChatGPT preflight；全部通过后生成静态 stage、安装器与绿色 ZIP。安装包本身不再需要联网补依赖。
 
-## 功能黑名单
+## 裁包列表
 
-黑名单分为两类：一类是体积明显偏大、桌面场景利用率较低的可选功能；另一类是目标发布版明确不需要携带的能力与构建残留。
+对 `node_modules` 的第一步裁剪采用黑名单机制，具体分为两类：一类是体积明显偏大、桌面场景利用率较低的可选功能；另一类是目标发布版明确不需要携带的能力与构建残留。
 
 ### 1. 体积过大、利用率低的可选功能
 
