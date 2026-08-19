@@ -137,17 +137,26 @@ try {
         throw ('launcher compilation failed with exit code ' + $LASTEXITCODE)
     }
 
-    $portablePath = Join-Path $PortableOutputDir ('DeepSeek-Harness-on-ChatGPT-Portable-' + $version + '-win-x64.zip')
-    if (Test-Path -LiteralPath $portablePath) { Remove-Item -LiteralPath $portablePath -Force }
-    $portableExcludedNames = @(
+    $packagedExcludedNames = @(
         'cleanup-admin.cmd',
         'README.portable.md',
         'README.release.md',
         'start-dsh-desktop.cmd',
         'stop-dsh-desktop.cmd'
     )
-    $portableEntries = @(Get-ChildItem -LiteralPath $payloadDir -Force |
-        Where-Object { $_.Name -notin $portableExcludedNames })
+    foreach ($excludedName in $packagedExcludedNames) {
+        Remove-Item -LiteralPath (Join-Path $payloadDir $excludedName) -Force -ErrorAction SilentlyContinue
+    }
+    $unexpectedPackagedFiles = @($packagedExcludedNames | Where-Object {
+        Test-Path -LiteralPath (Join-Path $payloadDir $_)
+    })
+    if ($unexpectedPackagedFiles.Count -gt 0) {
+        throw ('excluded payload files remain: ' + ($unexpectedPackagedFiles -join ', '))
+    }
+
+    $portablePath = Join-Path $PortableOutputDir ('DeepSeek-Harness-on-ChatGPT-Portable-' + $version + '-win-x64.zip')
+    if (Test-Path -LiteralPath $portablePath) { Remove-Item -LiteralPath $portablePath -Force }
+    $portableEntries = @(Get-ChildItem -LiteralPath $payloadDir -Force)
     Write-Step 'compress portable package'
     $tar = Get-Command tar -ErrorAction SilentlyContinue
     if ($tar) {

@@ -82,6 +82,9 @@ if (-not $SkipOfficialBuild) {
     $officialArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $repoRoot 'scripts\build-official.ps1'), '-Source', $Source, '-SkipZip')
     if ($Proxy) { $officialArgs += @('-Proxy', $Proxy) }
     Invoke-Native 'powershell.exe' $officialArgs
+} else {
+    $releaseArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $repoRoot 'scripts\build-release.ps1'), '-Source', $Source, '-SkipZip')
+    Invoke-Native 'powershell.exe' $releaseArgs
 }
 
 if ($StageOnly) {

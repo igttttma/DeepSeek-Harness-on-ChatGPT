@@ -1,7 +1,10 @@
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
+using System.Security.Cryptography;
 using System.Security.Principal;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -9,6 +12,7 @@ internal static class DeepSeekHarnessLauncher
 {
     private const string ProductName = "DeepSeek Harness (on ChatGPT)";
     private const string InstanceMutexName = @"Local\DeepSeekHarnessOnChatGPT.Instance";
+    private const string ActivationEventPrefix = @"Local\DeepSeekHarnessOnChatGPT.Activate.";
 
     [STAThread]
     private static int Main(string[] args)
@@ -26,6 +30,8 @@ internal static class DeepSeekHarnessLauncher
                     return controller.Stop();
                 case "stop-backend":
                     return controller.StopBackend();
+                case "terminal":
+                    return controller.OpenTerminal();
                 case "prepare":
                     return RunElevated("prepare-elevated");
                 case "cleanup":
@@ -41,6 +47,9 @@ internal static class DeepSeekHarnessLauncher
                 case "package-node":
                     if (args.Length != 6) return 64;
                     return RuntimeController.LaunchPackagedNode(args[1], args[2], args[3], args[4], int.Parse(args[5]));
+                case "package-terminal":
+                    if (args.Length != 5) return 64;
+                    return RuntimeController.LaunchPackagedTerminal(args[1], args[2], args[3], args[4]);
                 case "watch":
                     if (args.Length != 3) return 64;
                     return DirectoryDialogWatcher.Run(int.Parse(args[1]), args[2]);
@@ -78,21 +87,78 @@ internal static class DeepSeekHarnessLauncher
             catch (AbandonedMutexException) { acquired = true; }
             if (!acquired)
             {
+                if (SignalExistingInstance(controller)) return 0;
                 ShowError("DeepSeek Harness (on ChatGPT) is already running.\r\n\r\nClose the installed or portable instance before starting another one.");
                 return 16;
             }
+            using (var activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, GetActivationEventName()))
+            using (var listenerStop = new ManualResetEvent(false))
+            {
+                var listener = new Thread(delegate()
+                {
+                    WaitHandle[] handles = { activationEvent, listenerStop };
+                    while (WaitHandle.WaitAny(handles) == 0)
+                    {
+                        try { controller.ActivateShellWindow(); } catch { }
+                    }
+                });
+                listener.IsBackground = true;
+                listener.Name = "DSH activation listener";
+                listener.Start();
+                try
+                {
+                    int prepareResult = RunElevated("prepare-elevated");
+                    if (prepareResult != 0) return prepareResult;
+                    int startResult = controller.Start();
+                    if (startResult == 0)
+                    {
+                        controller.WaitForShellExit();
+                        controller.StopAfterShellExit();
+                    }
+                    return startResult;
+                }
+                finally
+                {
+                    listenerStop.Set();
+                    listener.Join(1000);
+                    mutex.ReleaseMutex();
+                }
+            }
+        }
+    }
+
+    private static bool SignalExistingInstance(RuntimeController controller)
+    {
+        string eventName = GetActivationEventName();
+        for (int attempt = 0; attempt < 10; attempt++)
+        {
             try
             {
-                int prepareResult = RunElevated("prepare-elevated");
-                if (prepareResult != 0) return prepareResult;
-                int startResult = controller.Start();
-                if (startResult == 0) controller.WaitForShellExit();
-                return startResult;
+                using (EventWaitHandle activationEvent = EventWaitHandle.OpenExisting(eventName))
+                {
+                    controller.AuthorizeShellForeground();
+                    return activationEvent.Set();
+                }
             }
-            finally
+            catch (WaitHandleCannotBeOpenedException)
             {
-                mutex.ReleaseMutex();
+                Thread.Sleep(100);
             }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private static string GetActivationEventName()
+    {
+        string executable = Path.GetFullPath(Application.ExecutablePath).ToUpperInvariant();
+        using (SHA256 hash = SHA256.Create())
+        {
+            string identity = BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(executable))).Replace("-", string.Empty);
+            return ActivationEventPrefix + identity;
         }
     }
 

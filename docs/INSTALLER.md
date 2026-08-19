@@ -55,6 +55,16 @@ dist\portable\DeepSeek-Harness-on-ChatGPT-Portable-<version>-win-x64.zip
 
 包身份启动通过 launcher 进程内加载 Windows 自带 Appx cmdlet 完成，不启动 `powershell.exe`。官方 DSH 保留 `pwsh-local` 等用户按需功能；只有实际选择这些功能时才可能启动 PowerShell，它们不属于安装器或桌面启动链。
 
+## DSH 命令终端
+
+Electron 页面右侧的终端按钮会在当前窗口内打开基于 node-pty 的多标签终端。Electron 壳为终端进程注入：
+
+- `DSH_HOME`、`DSH_ENTRY`、`DSH_NODE` 与 `DSH_RUNTIME`。
+- 指向 `dsh-runtime\tools\bin` 和 ChatGPT Node 目录的会话级 `PATH`。
+- 指向 `.dshhome\corepack` 的 `COREPACK_HOME`。
+
+`dsh.cmd` 始终使用 `DSH_NODE` 执行当前 release 的 `apps\cli\lib\bin.js`。`pnpm.cmd` 使用随包携带的 Corepack 执行固定版本 `pnpm@11.7.0`；首次调用需要网络，之后复用 profile 私有缓存。DSH 内 agent 启动的命令进程继承同一套环境，可以自行安装插件。系统 PATH 和用户已有的全局 `dsh`、Node、pnpm 均不修改，这些命令也不会暴露给应用外的终端。
+
 ## 卸载
 
 生成的 Inno 卸载器按 Windows 惯例注册到当前用户。Inno 删除应用文件前会：

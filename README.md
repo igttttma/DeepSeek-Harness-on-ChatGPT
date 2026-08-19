@@ -1,8 +1,8 @@
 # DeepSeek Harness on ChatGPT
 
-本仓库提供一套 **DeepSeek Harness 体积最小化（**39.17 MiB**）构建与打包脚本**；构建产物是安装阶段零联网下载依赖的 Windows x64 **增量安装包**与**绿色便携包**，将借用ChatGPT桌面版的运行环境。
+本仓库提供一套 **DeepSeek Harness 体积最小化（41.02 MiB）构建与打包脚本**；构建产物是安装阶段零联网下载依赖的 Windows x64 **增量安装包**与**绿色便携包**，将借用ChatGPT桌面版的运行环境。
 
-![fig](./fig.png)
+![fig1](./figs/taskbar.png)
 *ChatGPT的折叠图标上竟然出现了...蓝色鲸鱼...?*
 
 **DeepSeek Harness on ChatGPT 直接复用本机 ChatGPT Desktop 的 Node.js 与 Electron 运行环境，因此运行本项目提供的 EXE 前，电脑上必须已经安装 Microsoft Store 版 ChatGPT 桌面应用。** 
@@ -17,11 +17,11 @@
 
 | 方案 | 下载文件 | 静态展开 | 首次启动后实际新增 | 说明 |
 |---|---:|---:|---:|---|
-| 本项目安装器 | **8.89 MiB** | 约 **39.17 MiB** | 约 **45.76 MiB** | 首次启动额外复制 6.59 MiB stub/DLL；链接目标不重复占用磁盘 |
-| 本项目绿色便携 ZIP | **14.95 MiB** | **39.17 MiB** | 约 **45.76 MiB** | 与安装版使用同一静态 payload，不注册系统安装项 |
-| 等价“零依赖”自包含包 | 取决于压缩值 | 约 **692.61 MiB** | 约 **692.61 MiB** | 必须额外打入当前实际复用的 653.53 MiB Node/Electron/npm 闭包 |
+| 本项目安装器 | **9.12 MiB** | 约 **41.02 MiB** | 约 **47.61 MiB** | 首次启动额外复制 6.59 MiB stub/DLL；链接目标不重复占用磁盘 |
+| 本项目绿色便携 ZIP | **15.49 MiB** | **41.02 MiB** | 约 **47.61 MiB** | 与安装版使用同一静态 payload，不注册系统安装项 |
+| 等价“零依赖”自包含包 | 取决于压缩值 | 约 **694.55 MiB** | 约 **694.55 MiB** | 必须额外打入当前实际复用的 653.53 MiB Node/Electron/npm 闭包 |
 
-相同功能闭包下，本项目首次启动后的新增占用约为自包含方案的 **1/15**，避免重复存放约 **646.85 MiB** 已由 ChatGPT 提供的文件。Chromium profile、会话和缓存属于运行数据，不计入任何一行。
+相同功能闭包下，本项目首次启动后的新增占用约为自包含方案的 **1/15**，避免重复存放约 **646.94 MiB** 已由 ChatGPT 提供的文件。Chromium profile、会话和缓存属于运行数据，不计入任何一行。
 
 实际复用内容包括：
 
@@ -45,13 +45,39 @@ DeepSeek-Harness-on-ChatGPT-Setup-<version>-win-x64.exe
 
 1. 自动探测当前用户安装的最高版本 `OpenAI.Codex*`。
 2. 验证 Node、Electron、所有 npm junction 和 native asset fork 是否齐全。
-3. 释放约 39.17 MiB 的 DeepSeek Harness 增量 payload。
+3. 释放约 41.02 MiB 的 DeepSeek Harness 增量 payload。
 4. 安装器启动时请求 UAC；安装过程由 C# controller 创建 manifest 声明的 junction/symlink，并同步必要 stub/DLL，不执行运行时 PS1。
 5. 注册标准 Windows 应用、开始菜单、桌面快捷方式和卸载器。
 
 每次启动都会重新验证 ChatGPT 路径和能力。ChatGPT 更新后，启动器会自动修复失效链接和重新同步复制文件；不会终止、替换或修改已经运行的 `ChatGPT.exe`。
 
-绿色版解压后直接运行 `DeepSeek Harness (on ChatGPT).exe`。启动器 EXE 会以自身名义请求 UAC，再由内置 C# controller 执行相同的依赖验证和链接修复逻辑；目标机启动链不执行 PS1，也不创建 `powershell.exe` 子进程。绿色版不注册安装项或快捷方式。
+## 运行环境嵌入
+
+![fig2](./figs/terminal.png)
+
+Electron 页面右侧提供可折叠、可调整宽度且支持多标签页的内置终端。终端已预先配置当前 DSH release 所需的命令与环境，可以直接执行：
+
+```text
+dsh --version
+node --version
+pnpm --version
+```
+
+- `dsh` 执行当前安装包携带的 CLI，并使用该程序自己的 `.dshhome`。
+- `node` 来自本机 Microsoft Store 版 ChatGPT，并通过其包身份运行。
+- `pnpm` 由安装包内约 0.85 MiB 的 Corepack 下载器固定解析为 `pnpm@11.7.0`。首次执行 `pnpm` 时需要联网下载，完成后复用 `.dshhome\corepack` 中的缓存。
+
+内置终端支持手动管理插件，例如安装插件市场：
+
+```text
+dsh plugin --profile web add @sanqi-normal/dsh-webui-market-plugin
+```
+
+DSH 内 agent 启动的命令进程也会继承同一套 `dsh`、ChatGPT Node 和按需下载的 pnpm 环境，因此 agent 可以自行执行上述插件安装命令。
+
+这些环境变量和命令路由仅对 Electron 壳提供的内置终端及 DSH 内 agent 启动的命令进程有效。程序不会修改系统或用户 `PATH`，也不会把随包的 `dsh`、ChatGPT Node 或 pnpm 暴露给应用外部新开的 CMD、PowerShell 或其他终端。
+
+绿色版解压后直接运行 `DeepSeek Harness (on ChatGPT).exe`。启动器 EXE 会以自身名义请求 UAC，再由内置 C# controller 执行相同的依赖验证和链接修复逻辑。
 
 ## 最小构建思路
 

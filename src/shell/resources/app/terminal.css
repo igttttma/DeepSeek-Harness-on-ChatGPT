@@ -1,0 +1,228 @@
+:root {
+  --dsh-terminal-panel-width: clamp(360px, 40vw, 560px);
+  --dsh-terminal-bg: #f7f7f8;
+  --dsh-terminal-fg: #242424;
+  --dsh-terminal-muted: #676767;
+  --dsh-terminal-border: rgba(0, 0, 0, 0.14);
+  --dsh-terminal-hover: rgba(0, 0, 0, 0.07);
+  --dsh-terminal-dock-hover: #ececee;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --dsh-terminal-bg: #1f2023;
+    --dsh-terminal-fg: #f1f1f1;
+    --dsh-terminal-muted: #b4b4b4;
+    --dsh-terminal-border: rgba(255, 255, 255, 0.14);
+    --dsh-terminal-hover: rgba(255, 255, 255, 0.09);
+    --dsh-terminal-dock-hover: #2b2c30;
+  }
+}
+
+#dsh-terminal-launch {
+  position: fixed;
+  top: 54px;
+  right: 0;
+  z-index: 2147483647;
+  display: grid;
+  box-sizing: border-box;
+  width: 52px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--dsh-terminal-border);
+  border-right: 0;
+  border-radius: 22px 0 0 22px;
+  appearance: none;
+  background: var(--dsh-terminal-bg);
+  color: var(--dsh-terminal-muted);
+  cursor: pointer;
+  font: inherit;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+#dsh-terminal-launch:hover,
+#dsh-terminal-launch:focus-visible,
+#dsh-terminal-launch[aria-pressed="true"] {
+  background: var(--dsh-terminal-dock-hover);
+  color: var(--dsh-terminal-fg);
+}
+
+#dsh-terminal-launch:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+#dsh-terminal-launch svg {
+  display: block;
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#dsh-terminal-panel {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 2147483646;
+  box-sizing: border-box;
+  width: var(--dsh-terminal-panel-width);
+  padding: 0 8px 8px;
+  border-left: 1px solid var(--dsh-terminal-border);
+  background: var(--dsh-terminal-bg);
+  color: var(--dsh-terminal-fg);
+}
+
+#dsh-terminal-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+  cursor: ew-resize;
+  z-index: 3;
+}
+
+#dsh-terminal-resizer::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--dsh-terminal-border);
+}
+
+#dsh-terminal-header {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  height: 46px;
+  gap: 4px;
+  padding-right: 48px;
+  border-bottom: 1px solid var(--dsh-terminal-border);
+}
+
+#dsh-terminal-tabs {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: stretch;
+  gap: 2px;
+  overflow: auto hidden;
+}
+
+.dsh-terminal-tab {
+  display: flex;
+  min-width: 112px;
+  max-width: 220px;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+}
+
+.dsh-terminal-tab.active { border-bottom-color: var(--dsh-terminal-fg); }
+
+.dsh-terminal-tab button {
+  height: 32px;
+  margin-top: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--dsh-terminal-muted);
+  cursor: pointer;
+}
+
+.dsh-terminal-tab-activate {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 8px;
+  text-align: left;
+}
+
+.dsh-terminal-tab-activate svg { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.4; }
+.dsh-terminal-tab-activate span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-terminal-tab.active button { color: var(--dsh-terminal-fg); }
+.dsh-terminal-tab button:hover { background: var(--dsh-terminal-hover); }
+
+.dsh-terminal-tab-close { display: grid; width: 28px; padding: 0; place-items: center; }
+.dsh-terminal-tab-close svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+#dsh-terminal-add svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+
+#dsh-terminal-add {
+  position: absolute;
+  top: 6px;
+  right: 0;
+  display: grid;
+  width: 36px;
+  height: 34px;
+  margin: 0;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--dsh-terminal-fg);
+  cursor: pointer;
+}
+#dsh-terminal-add:hover { background: var(--dsh-terminal-hover); color: var(--dsh-terminal-fg); }
+
+#dsh-terminal-views { height: calc(100% - 46px); min-height: 0; }
+.dsh-terminal-view { width: 100%; height: 100%; }
+.dsh-terminal-view[hidden] { display: none; }
+
+html.dsh-terminal-resizing,
+html.dsh-terminal-resizing * { cursor: ew-resize !important; user-select: none !important; }
+
+html.dsh-terminal-open {
+  overflow-x: hidden;
+}
+
+html.dsh-terminal-open body {
+  box-sizing: border-box !important;
+  width: calc(100% - var(--dsh-terminal-panel-width)) !important;
+  min-width: 0 !important;
+}
+
+#dsh-terminal-panel[hidden] {
+  display: none;
+}
+
+#dsh-terminal-views,
+#dsh-terminal-views .xterm {
+  width: 100%;
+  height: 100%;
+}
+
+#dsh-terminal-views .xterm {
+  padding: 2px 4px;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+#dsh-terminal-views .xterm-screen,
+#dsh-terminal-views .xterm-rows,
+#dsh-terminal-views .xterm-rows > div {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+#dsh-terminal-views .xterm-viewport,
+#dsh-terminal-views .xterm-screen {
+  background: var(--dsh-terminal-bg) !important;
+}
+
+@media (max-width: 700px) {
+  :root {
+    --dsh-terminal-panel-width: min(92vw, 520px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #dsh-terminal-launch {
+    transition: none;
+  }
+}

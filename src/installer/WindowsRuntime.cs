@@ -188,6 +188,40 @@ internal sealed class ProcessRecord
 
 internal static class ProcessUtility
 {
+    private const uint GwOwner = 4;
+    private const int SwShow = 5;
+    private const int SwRestore = 9;
+
+    private delegate bool EnumWindowsCallback(IntPtr window, IntPtr parameter);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr parameter);
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr window, uint command);
+    [DllImport("user32.dll")]
+    private static extern int GetWindowTextLength(IntPtr window);
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr window, out WindowRect rectangle);
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr window);
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")]
+    private static extern bool AllowSetForegroundWindow(uint processId);
+
     public static List<ProcessRecord> Query(string whereClause)
     {
         var records = new List<ProcessRecord>();
@@ -217,11 +251,70 @@ internal static class ProcessUtility
         try { Process.GetProcessById(record.Id).Kill(); } catch { }
     }
 
+    public static void KillTree(int rootPid)
+    {
+        var records = Query(null);
+        var children = new Dictionary<int, List<int>>();
+        foreach (ProcessRecord record in records)
+        {
+            List<int> list;
+            if (!children.TryGetValue(record.ParentId, out list))
+            {
+                list = new List<int>();
+                children[record.ParentId] = list;
+            }
+            list.Add(record.Id);
+        }
+        var visited = new HashSet<int>();
+        KillTree(rootPid, children, visited);
+    }
+
+    private static void KillTree(int pid, Dictionary<int, List<int>> children, HashSet<int> visited)
+    {
+        if (!visited.Add(pid)) return;
+        List<int> descendants;
+        if (children.TryGetValue(pid, out descendants))
+            foreach (int child in descendants) KillTree(child, children, visited);
+        try { Process.GetProcessById(pid).Kill(); } catch { }
+    }
+
     public static void KillByName(params string[] names)
     {
         foreach (string name in names)
             foreach (Process process in Process.GetProcessesByName(name))
                 try { process.Kill(); } catch { }
+    }
+
+    public static bool ActivateTopLevelWindow(int processId)
+    {
+        IntPtr target = IntPtr.Zero;
+        long targetScore = long.MinValue;
+        EnumWindows(delegate(IntPtr window, IntPtr parameter)
+        {
+            uint ownerPid;
+            GetWindowThreadProcessId(window, out ownerPid);
+            if (ownerPid != (uint)processId || GetWindow(window, GwOwner) != IntPtr.Zero) return true;
+            WindowRect rectangle;
+            long area = 0;
+            if (GetWindowRect(window, out rectangle))
+                area = Math.Max(0, rectangle.Right - rectangle.Left) * (long)Math.Max(0, rectangle.Bottom - rectangle.Top);
+            long score = area + (GetWindowTextLength(window) > 0 ? (1L << 60) : 0);
+            if (score > targetScore)
+            {
+                target = window;
+                targetScore = score;
+            }
+            return true;
+        }, IntPtr.Zero);
+        if (target == IntPtr.Zero) return false;
+        ShowWindow(target, IsIconic(target) ? SwRestore : SwShow);
+        SetForegroundWindow(target);
+        return true;
+    }
+
+    public static void AuthorizeForeground(int processId)
+    {
+        if (processId > 0) AllowSetForegroundWindow((uint)processId);
     }
 
     public static Process StartHidden(string fileName, string arguments, string workingDirectory, IDictionary<string, string> environment)
@@ -234,6 +327,24 @@ internal static class ProcessUtility
             UseShellExecute = false,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden
+        };
+        if (environment != null)
+            foreach (KeyValuePair<string, string> pair in environment) info.EnvironmentVariables[pair.Key] = pair.Value;
+        return Process.Start(info);
+    }
+
+    public static Process StartConsoleShell(string workingDirectory, IDictionary<string, string> environment)
+    {
+        string command = Environment.GetEnvironmentVariable("ComSpec");
+        if (string.IsNullOrWhiteSpace(command)) command = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        var info = new ProcessStartInfo
+        {
+            FileName = command,
+            Arguments = "/d /k \"title DSH Terminal & echo DSH CLI environment ready. & echo.\"",
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = false,
+            WindowStyle = ProcessWindowStyle.Normal
         };
         if (environment != null)
             foreach (KeyValuePair<string, string> pair in environment) info.EnvironmentVariables[pair.Key] = pair.Value;

@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Security.Principal;
 using System.Text;
 using System.Threading;
+using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 internal sealed class RuntimeController
@@ -20,6 +21,7 @@ internal sealed class RuntimeController
     private readonly string owlMarker;
     private readonly string launcherPath;
     private readonly string taskbarIcon;
+    private readonly string activationSignal;
     private int activeShellPid;
 
     public RuntimeController(string installRoot, string executablePath)
@@ -34,6 +36,7 @@ internal sealed class RuntimeController
         owlMarker = Path.Combine(owlHost, ".codex-package-full-name");
         launcherPath = executablePath;
         taskbarIcon = Path.Combine(runtime, "dsh-taskbar-icon.exe");
+        activationSignal = Path.Combine(runtime, "dsh-activate.signal");
     }
 
     public int Start()
@@ -53,7 +56,12 @@ internal sealed class RuntimeController
 
         string configPath = Path.Combine(owlHost, "resources", "app", "dsh-desktop.json");
         Directory.CreateDirectory(Path.GetDirectoryName(configPath));
-        File.WriteAllText(configPath, "{ \"url\": \"http://127.0.0.1:" + manifest.port + "\" }", new UTF8Encoding(false));
+        var desktopConfig = new Dictionary<string, string>
+        {
+            { "url", "http://127.0.0.1:" + manifest.port },
+            { "node", requirements.Package.NodePath }
+        };
+        File.WriteAllText(configPath, new JavaScriptSerializer().Serialize(desktopConfig), new UTF8Encoding(false));
 
         if (!IsPortListening(manifest.port))
         {
@@ -92,19 +100,83 @@ internal sealed class RuntimeController
         try { Process.GetProcessById(activeShellPid).WaitForExit(); } catch { }
     }
 
+    public bool ActivateShellWindow()
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            int shellPid = activeShellPid;
+            if (shellPid == 0)
+            {
+                ProcessRecord shell = FindOwlParent();
+                if (shell != null) shellPid = shell.Id;
+            }
+            if (WriteActivationSignal()) return true;
+            if (shellPid != 0 && ProcessUtility.ActivateTopLevelWindow(shellPid)) return true;
+            Thread.Sleep(100);
+        }
+        return false;
+    }
+
+    private bool WriteActivationSignal()
+    {
+        try
+        {
+            Directory.CreateDirectory(runtime);
+            File.WriteAllText(activationSignal, DateTime.UtcNow.Ticks + ":" + Guid.NewGuid().ToString("N"), new UTF8Encoding(false));
+            return true;
+        }
+        catch { return false; }
+    }
+
+    public void AuthorizeShellForeground()
+    {
+        ProcessRecord shell = FindOwlParent();
+        if (shell != null) ProcessUtility.AuthorizeForeground(shell.Id);
+    }
+
     public int Stop()
     {
         StopWatchers();
-        RestoreTaskbarIcon();
-        StopOwlStub();
         StopDshNode();
-        Thread.Sleep(300);
+        StopOwlStub();
+        WaitForDshExit(8000);
+        RestoreTaskbarIcon();
         return 0;
+    }
+
+    public void StopAfterShellExit()
+    {
+        StopWatchers();
+        StopDshNode();
+        // The Electron browser process can exit before Crashpad/GPU/utility
+        // descendants. Kill the owl-host tree before waiting for file handles
+        // to drain so parasite-runtime is immediately removable after Quit.
+        StopOwlStub();
+        WaitForDshExit(8000);
+        RestoreTaskbarIcon();
     }
 
     public int StopBackend()
     {
         StopDshNode();
+        return 0;
+    }
+
+    public int OpenTerminal()
+    {
+        CodexRequirements requirements = CodexDiscovery.Validate(manifestPath);
+        string bin = CodexDiscovery.CombineRelative(dsh, requirements.Manifest.entry);
+        string toolsBin = Path.Combine(dsh, "tools", "bin");
+        string corepack = Path.Combine(dsh, "tools", "corepack", "dist", "corepack.js");
+        if (!File.Exists(bin)) throw new FileNotFoundException("DSH CLI entry is missing.", bin);
+        if (!File.Exists(Path.Combine(toolsBin, "dsh.cmd"))) throw new FileNotFoundException("DSH command wrapper is missing.");
+        if (!File.Exists(Path.Combine(toolsBin, "pnpm.cmd"))) throw new FileNotFoundException("pnpm command wrapper is missing.");
+        if (!File.Exists(corepack)) throw new FileNotFoundException("Corepack downloader is missing.", corepack);
+        Directory.CreateDirectory(dshHome);
+        string packageArguments = "package-terminal " + ProcessUtility.Quote(requirements.Package.NodePath) + " "
+            + ProcessUtility.Quote(bin) + " " + ProcessUtility.Quote(dshHome) + " " + ProcessUtility.Quote(dsh);
+        AppxBridge.Invoke(requirements.Package.FamilyName, launcherPath, packageArguments);
         return 0;
     }
 
@@ -140,6 +212,7 @@ internal sealed class RuntimeController
             Path.Combine(runtime, "dsh-desktop.log"),
             Path.Combine(runtime, "dsh-node.log"),
             Path.Combine(runtime, "dsh-taskbar-icon.log"),
+            activationSignal,
             Path.Combine(runtime, "dsh-hwnd.txt"),
             Path.Combine(owlHost, "debug.log"),
             Path.Combine(owlHost, "owl-host-log.txt")
@@ -172,8 +245,35 @@ internal sealed class RuntimeController
 
     public static int LaunchPackagedNode(string node, string bin, string home, string workingDirectory, int port)
     {
-        var environment = new Dictionary<string, string> { { "DSH_HOME", home } };
+        var environment = CreateDshEnvironment(node, bin, home, workingDirectory);
         ProcessUtility.StartHidden(node, ProcessUtility.Quote(bin) + " --profile web --port " + port, workingDirectory, environment);
+        return 0;
+    }
+
+    private static Dictionary<string, string> CreateDshEnvironment(string node, string bin, string home, string workingDirectory)
+    {
+        string toolsBin = Path.Combine(workingDirectory, "tools", "bin");
+        string nodeBin = Path.GetDirectoryName(node);
+        string corepackHome = Path.Combine(home, "corepack");
+        Directory.CreateDirectory(corepackHome);
+        return new Dictionary<string, string>
+        {
+            { "DSH_HOME", home },
+            { "DSH_ENTRY", bin },
+            { "DSH_NODE", node },
+            { "DSH_RUNTIME", workingDirectory },
+            { "COREPACK_HOME", corepackHome },
+            { "COREPACK_ENABLE_DOWNLOAD_PROMPT", "0" },
+            { "PATH", toolsBin + ";" + nodeBin + ";" + Environment.GetEnvironmentVariable("PATH") }
+        };
+    }
+
+    public static int LaunchPackagedTerminal(string node, string bin, string home, string workingDirectory)
+    {
+        var environment = CreateDshEnvironment(node, bin, home, workingDirectory);
+        string userDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(userDirectory) || !Directory.Exists(userDirectory)) userDirectory = workingDirectory;
+        ProcessUtility.StartConsoleShell(userDirectory, environment);
         return 0;
     }
 
@@ -358,8 +458,8 @@ internal sealed class RuntimeController
     {
         string prefix = owlHost.TrimEnd('\\') + "\\";
         foreach (ProcessRecord process in ProcessUtility.Query("Name='owl-stub.exe'"))
-            if ((process.ExecutablePath ?? string.Empty).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) ProcessUtility.Kill(process);
-        Thread.Sleep(500);
+            if ((process.ExecutablePath ?? string.Empty).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) ProcessUtility.KillTree(process.Id);
+        Thread.Sleep(700);
     }
 
     private void StopDshNode()
@@ -368,7 +468,7 @@ internal sealed class RuntimeController
         {
             string commandLine = process.CommandLine ?? string.Empty;
             if (commandLine.IndexOf(dsh, StringComparison.OrdinalIgnoreCase) >= 0
-                && commandLine.IndexOf("--profile web", StringComparison.OrdinalIgnoreCase) >= 0) ProcessUtility.Kill(process);
+                && commandLine.IndexOf("--profile web", StringComparison.OrdinalIgnoreCase) >= 0) ProcessUtility.KillTree(process.Id);
         }
     }
 
@@ -379,7 +479,34 @@ internal sealed class RuntimeController
             if (!string.Equals(process.ExecutablePath, launcherPath, StringComparison.OrdinalIgnoreCase)) continue;
             string commandLine = process.CommandLine ?? string.Empty;
             if (commandLine.IndexOf(" watch ", StringComparison.OrdinalIgnoreCase) >= 0
-                && commandLine.IndexOf(dsh, StringComparison.OrdinalIgnoreCase) >= 0) ProcessUtility.Kill(process);
+                && commandLine.IndexOf(dsh, StringComparison.OrdinalIgnoreCase) >= 0) ProcessUtility.KillTree(process.Id);
+        }
+    }
+
+    private void WaitForDshExit(int timeoutMilliseconds)
+    {
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMilliseconds);
+        string prefix = owlHost.TrimEnd('\\') + "\\";
+        while (DateTime.UtcNow < deadline)
+        {
+            bool running = false;
+            foreach (ProcessRecord process in ProcessUtility.Query(null))
+            {
+                string executable = process.ExecutablePath ?? string.Empty;
+                string commandLine = process.CommandLine ?? string.Empty;
+                if ((string.Equals(process.Name, "owl-stub.exe", StringComparison.OrdinalIgnoreCase)
+                        && executable.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    || (string.Equals(process.Name, "node.exe", StringComparison.OrdinalIgnoreCase)
+                        && commandLine.IndexOf(dsh, StringComparison.OrdinalIgnoreCase) >= 0)
+                    || (string.Equals(executable, launcherPath, StringComparison.OrdinalIgnoreCase)
+                        && commandLine.IndexOf(" watch ", StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    running = true;
+                    break;
+                }
+            }
+            if (!running) return;
+            Thread.Sleep(150);
         }
     }
 

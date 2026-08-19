@@ -581,6 +581,47 @@ foreach ($name in @('package.json', 'pnpm-workspace.yaml', '.npmrc')) {
     if (Test-Path -LiteralPath $p) { Copy-FileTo $p (Join-Path $dshRuntime $name) }
 }
 
+$patchesSource = Join-Path $Source 'patches'
+if (Test-Path -LiteralPath $patchesSource -PathType Container) {
+    Write-Step 'stage pnpm patches'
+    Invoke-Robocopy $patchesSource (Join-Path $dshRuntime 'patches') @() | Out-Null
+}
+else {
+    throw ('Source is missing required pnpm patches directory: ' + $patchesSource)
+}
+$workspaceManifest = Join-Path $dshRuntime 'pnpm-workspace.yaml'
+$patchReferences = @(Select-String -Path $workspaceManifest -Pattern 'patches/[^\s]+' -AllMatches -ErrorAction SilentlyContinue |
+    ForEach-Object { $_.Matches | ForEach-Object { $_.Value } } | Sort-Object -Unique)
+foreach ($patchReference in $patchReferences) {
+    $patchPath = Join-Path $dshRuntime ($patchReference -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $patchPath -PathType Leaf)) {
+        throw ('pnpm patch reference is missing from release runtime: ' + $patchReference)
+    }
+}
+
+# Profile workspaces are out-of-tree plugin projects. They must not inherit the
+# root workspace's build-only node-pty patch when installing unrelated plugins.
+$profileBootLib = Join-Path $dshRuntime 'packages\boot\app-boot\lib\index.js'
+if (Test-Path -LiteralPath $profileBootLib -PathType Leaf) {
+    $profileText = Get-Content -LiteralPath $profileBootLib -Raw -Encoding UTF8
+    $profileText = $profileText.Replace("nodeLinker: hoisted`nautoInstallPeers: false`n", "nodeLinker: hoisted`nautoInstallPeers: false`npatchedDependencies: {}`n")
+    [IO.File]::WriteAllText($profileBootLib, $profileText, [Text.UTF8Encoding]::new($false))
+}
+
+Write-Step 'stage DSH CLI wrappers + Corepack downloader'
+$toolsRoot = Join-Path $dshRuntime 'tools'
+$toolsBin = Join-Path $toolsRoot 'bin'
+Ensure-Dir $toolsBin
+Copy-FileTo (Join-Path $repoRoot 'src\cli\dsh.cmd') (Join-Path $toolsBin 'dsh.cmd')
+Copy-FileTo (Join-Path $repoRoot 'src\cli\pnpm.cmd') (Join-Path $toolsBin 'pnpm.cmd')
+$corepackPackage = Get-CodexDesktopPackage
+if (-not $corepackPackage) { throw 'OpenAI.Codex package missing; cannot stage Corepack downloader' }
+$corepackSource = Join-Path $corepackPackage.InstallLocation 'app\resources\cua_node\bin\node_modules\corepack'
+if (-not (Test-Path -LiteralPath (Join-Path $corepackSource 'dist\corepack.js') -PathType Leaf)) {
+    throw ('ChatGPT Corepack downloader is missing: ' + $corepackSource)
+}
+Invoke-Robocopy $corepackSource (Join-Path $toolsRoot 'corepack') @() | Out-Null
+
 Write-Step 'scrub blacklisted workspace dependencies from package manifests'
 $manifestDepsScrubbed = @(Remove-BlacklistedManifestDependencies $dshRuntime $blacklist)
 Write-Step ('package manifest dependencies removed: ' + $manifestDepsScrubbed.Count)
@@ -627,6 +668,10 @@ if (-not (Test-Path -LiteralPath $webCordis)) {
 $webPatch = Join-Path $homeDst 'profiles\web\cordis.patch.yml'
 if (-not (Test-Path -LiteralPath $webPatch)) {
     [IO.File]::WriteAllText($webPatch, ('[]' + [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
+}
+$webWorkspace = Join-Path $homeDst 'profiles\web\pnpm-workspace.yaml'
+if (-not (Test-Path -LiteralPath $webWorkspace)) {
+    [IO.File]::WriteAllText($webWorkspace, "packages:`n  - .`n`nnodeLinker: hoisted`nautoInstallPeers: false`npatchedDependencies: {}`n", [Text.UTF8Encoding]::new($false))
 }
 
 
