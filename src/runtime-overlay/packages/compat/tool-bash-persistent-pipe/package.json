@@ -1,0 +1,18 @@
+{
+  "name": "@dsh-on-chatgpt/dsh-tool-bash-persistent-pipe",
+  "description": "Windows-compatible persistent Bash tool over managed stdio pipes",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-subprocess": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*"
+  }
+}

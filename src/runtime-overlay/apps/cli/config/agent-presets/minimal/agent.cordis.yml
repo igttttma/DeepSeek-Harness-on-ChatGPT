@@ -1,0 +1,45 @@
+# The Windows `minimal` preset retains the official fixed persona and two-tool
+# surface, but its persistent Bash transport uses managed stdio pipes. The
+# executable is the bare PATH name `bash`; host availability is intentionally
+# left to normal subprocess resolution.
+
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: You are a helpful software engineer assistant.
+    complete: true
+    includeRuntimeContext: false
+
+- id: persistent-bash
+  name: '@dsh-on-chatgpt/dsh-tool-bash-persistent-pipe'
+  config:
+    shellCommand: bash
+    shellArgs:
+      - --noprofile
+      - --norc
+    timeoutMs: 300000
+    maxOutputChars: 16000
+    description: |-
+      Run commands in a persistent bash shell
+      * When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.
+      * Commands are resolved from the host environment inherited by the application.
+      * State is persistent across command calls and discussions with the user.
+      * To inspect a particular line range of a file, e.g. lines 10-25, try 'sed -n 10,25p /path/to/the/file'.
+      * Please avoid commands that may produce a very large amount of output.
+      * Interactive TTY programs are not supported by this pipe-backed shell.
+
+- id: filesystem
+  name: cordis:group
+  group: true
+  isolate:
+    fs: true
+  config:
+    - id: fs-local
+      name: '@deepseek-ai/dsh-fs-local'
+      config:
+        cwd: !!js process.env.DSH_CWD ?? process.cwd()
+
+    - id: str-replace-editor
+      name: '@deepseek-ai/dsh-tool-str-replace-editor'
+      config:
+        maxOutputChars: 16000

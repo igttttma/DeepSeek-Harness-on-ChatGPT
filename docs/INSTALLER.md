@@ -65,6 +65,8 @@ Electron 页面右侧的终端按钮会在当前窗口内打开基于 node-pty �
 
 `dsh.cmd` 始终使用 `DSH_NODE` 执行当前 release 的 `apps\cli\lib\bin.js`。`pnpm.cmd` 使用随包携带的 Corepack 执行固定版本 `pnpm@11.7.0`；首次调用需要网络，之后复用 profile 私有缓存。DSH 内 agent 启动的命令进程继承同一套环境，可以自行安装插件。系统 PATH 和用户已有的全局 `dsh`、Node、pnpm 均不修改，这些命令也不会暴露给应用外的终端。
 
+极简 preset 的 `bash` 工具不使用上述 node-pty 终端。发布构建注入的 `@dsh-on-chatgpt/dsh-tool-bash-persistent-pipe` 以 stdin/stdout 管道维护每 Agent 一个持久 Bash，并从应用继承的 `PATH` / `PATHEXT` 解析裸命令 `bash`。安装器不携带、不下载、也不预检 Bash；本机缺失时只在调用该工具时返回 executable-not-found。管道模式保留 shell 状态，但不支持要求 TTY 的交互程序。
+
 ## 卸载
 
 生成的 Inno 卸载器按 Windows 惯例注册到当前用户。Inno 删除应用文件前会：

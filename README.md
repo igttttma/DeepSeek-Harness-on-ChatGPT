@@ -77,6 +77,12 @@ DSH 内 agent 启动的命令进程也会继承同一套 `dsh`、ChatGPT Node �
 
 这些环境变量和命令路由仅对 Electron 壳提供的内置终端及 DSH 内 agent 启动的命令进程有效。程序不会修改系统或用户 `PATH`，也不会把随包的 `dsh`、ChatGPT Node 或 pnpm 暴露给应用外部新开的 CMD、PowerShell 或其他终端。
 
+### Windows 极简模式的 Bash
+
+官方极简 preset 的持久 Bash 依赖 POSIX PTY inspection，在 Windows 上无法直接工作。本项目在生成 stage 时以 packager-owned runtime overlay 替换该 preset 的传输层：Bash 通过受管 stdin/stdout 管道保持为每个 Agent 独立的长驻进程，不调用 DSH 的 `spawnTerminal`，因此不触发 win32 PTY inspection。`cd`、导出的环境变量和 shell function 会跨工具调用保留；超时、取消或 shell 退出后会终止进程树，并在下次调用重新创建。
+
+安装包**不携带 Bash，也不检查 Bash 是否存在**。插件以裸命令 `bash` 通过应用继承的本机 `PATH` / `PATHEXT` 解析；解析或启动失败会作为该次 `bash` 工具错误返回，不影响其他 preset。由于底层是管道而非终端，`vim`、交互式 REPL 等要求 TTY 的程序不受支持。
+
 绿色版解压后直接运行 `DeepSeek Harness (on ChatGPT).exe`。启动器 EXE 会以自身名义请求 UAC，再由内置 C# controller 执行相同的依赖验证和链接修复逻辑。
 
 ## 最小构建思路
@@ -149,6 +155,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
 ```
 
 首次默认构建会 clone 官方源码到 `.work\deepseek-harness`。`-Offline` 禁止 fetch，`-StageOnly` 只生成最小 stage，`-SkipOfficialBuild` 复用已有 `dist\stage` 重新打包。
+
+构建 stage 后，可用本机 Git Bash 对管道式持久 Bash 做独立 smoke；其他 Bash 目录通过 `DSH_TEST_BASH_BIN` 指定：
+
+```powershell
+node .\scripts\smoke-persistent-pipe-bash.mjs .\dist\stage\dsh-runtime
+```
 
 ```text
 dist/

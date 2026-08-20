@@ -113,6 +113,8 @@ app/
 
 `node_modules/@deepseek-ai/*` 在 stage 内为 workspace junction，指回 `packages` / `vendor` / `apps`。
 
+Windows 发布还注入一个不属于上游源码的 workspace overlay：`@dsh-on-chatgpt/dsh-tool-bash-persistent-pipe`。它仅包含约 15 KiB JavaScript，以普通 subprocess 管道实现极简 preset 的持久 Bash，复用现有 `dsh-subprocess-local`，不新增 native 文件。Bash 可执行文件只从运行环境的 `PATH` / `PATHEXT` 解析，不属于 release closure 或安装 preflight。
+
 ### 4.2 私有 npm（ChatGPT 池没有）
 
 官方 `0.1.0-rc.7` 当前实测：**266** 个私有包，私有 `node_modules` 约 **24.52 MB**（不含 junction 目标）。

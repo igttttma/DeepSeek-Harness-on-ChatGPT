@@ -571,6 +571,13 @@ if (Test-Path (Join-Path $Source 'packages')) { Copy-WorkspacePackageTree (Join-
 if (Test-Path (Join-Path $Source 'vendor')) { Copy-WorkspacePackageTree (Join-Path $Source 'vendor') (Join-Path $dshRuntime 'vendor') }
 if (Test-Path (Join-Path $Source 'native')) { Copy-WorkspacePackageTree (Join-Path $Source 'native') (Join-Path $dshRuntime 'native') }
 
+$runtimeOverlay = Join-Path $repoRoot 'src\runtime-overlay'
+if (-not (Test-Path -LiteralPath $runtimeOverlay -PathType Container)) {
+    throw ('packager runtime overlay missing: ' + $runtimeOverlay)
+}
+Write-Step 'apply packager-owned Windows runtime overlay'
+Invoke-Robocopy $runtimeOverlay $dshRuntime @() | Out-Null
+
 Write-Step 'apply workspace blacklist'
 $excludedWorkspace = @(Remove-BlacklistedWorkspaceFromStage $dshRuntime $Source $blacklist)
 Write-Step ('excluded workspace packages/paths: ' + $excludedWorkspace.Count)
