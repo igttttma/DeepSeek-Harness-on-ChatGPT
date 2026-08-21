@@ -219,7 +219,7 @@ ipcMain.handle('dsh-terminal:start', (event, request) => {
     rows: terminalSize(request && request.rows),
     cwd: runtime.cwd,
     env: runtime.env,
-    useConptyDll: true
+    useConptyDll: false
   });
   const record = { process: child, owner: event.sender, cwd: runtime.cwd };
   terminalProcesses.set(id, record);

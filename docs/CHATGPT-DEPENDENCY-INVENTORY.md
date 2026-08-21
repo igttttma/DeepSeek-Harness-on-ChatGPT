@@ -16,8 +16,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| PackageFullName | `OpenAI.Codex_26.814.5167.0_x64__2p2nqsd0c76g0` |
-| Version | `26.814.5167.0` |
+| PackageFullName | `OpenAI.Codex_26.818.3698.0_x64__2p2nqsd0c76g0` |
+| Version | `26.818.3698.0` |
 | 安装根 | `%ProgramFiles%\\WindowsApps\\OpenAI.Codex_*` |
 | 探测方式 | 读取当前用户 AppModel Repository，取最高 `OpenAI.Codex*` 版本并逐项验证运行接口 |
 
@@ -73,7 +73,7 @@ app/
 | `node_modules/zlibjs` | `zlibjs` | 0.3.1 | 压缩辅助 |
 | `node_modules/wasm-feature-detect` | `wasm-feature-detect` | 1.8.0 | wasm 探测 |
 
-完整列表以 `release-manifest.json` 的 `cgJunctions` 为准（当前 28 项，含整 scope 与单包）。
+完整列表以 `release-manifest.json` 的 `cgJunctions` 为准（当前 27 项，含整 scope 与单包）。
 
 启动时：`Ensure-CgJunctionsFromManifest` → `Repair-CgJunctions`（含 `@scope/pkg` 嵌套 retarget）。
 
@@ -84,7 +84,7 @@ app/
 | DSH 路径 | 包内路径 | 类型 | 说明 |
 |---------|----------|------|------|
 | `node_modules/@vscode/ripgrep-win32-x64/bin/rg.exe` | `app/resources/rg.exe` | symlink | `@vscode/ripgrep` 解析到此二进制 |
-| `node_modules/node-pty/build` | `app/resources/app.asar.unpacked/node_modules/node-pty/build` | junction | 仅 native；JS 与 package.json 仍私有 |
+| `node_modules/node-pty/build` | `app/resources/app.asar.unpacked/node_modules/node-pty/build` | junction | Electron ABI native build；JS、package.json 与 CUA Node ABI prebuild 仍私有 |
 | `parasite-runtime/owl-host/*`（除 `resources`） | `app/*` | symlink/junction + stub 复制 | `owl-stub.exe` 来自 `ChatGPT.exe`；`chrome_elf.dll` 复制 |
 | Node 解释器 | `app/resources/cua_node/bin/node.exe` | 包身份进程 | `Invoke-CommandInDesktopPackage` |
 
@@ -113,11 +113,13 @@ app/
 
 `node_modules/@deepseek-ai/*` 在 stage 内为 workspace junction，指回 `packages` / `vendor` / `apps`。
 
-Windows 极简 preset 不再需要 packager overlay：官方 `0.1.1-rc.2` 起极简模式在 win32 使用官方持久 pwsh（`@deepseek-ai/dsh-tool-pwsh-persistent` + `@deepseek-ai/dsh-terminal-bash`，`shellDialect: pwsh`），Bash 行在 win32 禁用。pwsh 解析按 PowerShell 7 → PATH `pwsh.exe` → Windows 自带 PowerShell 5.1 回退，无需预装 pwsh 7。PTY 由随包私有 `node-pty` 提供，其 native `build` 目录启动时从 ChatGPT 的 `app.asar.unpacked` fork；Windows 进程表 inspection 由随包 `koffi`/`@koromix/koffi-win32-x64` 承担。
+Windows 极简 preset 不再需要 packager overlay：官方 `0.1.1-rc.2` 起极简模式在 win32 使用官方持久 pwsh（`@deepseek-ai/dsh-tool-pwsh-persistent` + `@deepseek-ai/dsh-terminal-bash`，`shellDialect: pwsh`），Bash 行在 win32 禁用。pwsh 解析按 PowerShell 7 → PATH `pwsh.exe` → Windows 自带 PowerShell 5.1 回退，无需预装 pwsh 7。
+
+PTY 分为两个 ABI 路径。运行在 ChatGPT CUA Node 下的官方持久 pwsh 使用随包私有 `node-pty\prebuilds\win32-x64\conpty.node` 与 `conpty_console_list.node`；Electron 内置终端使用从当前 ChatGPT `app.asar.unpacked` fork 的 `node-pty\build` junction，并设置 `useConptyDll: false` 以直接使用 Windows 系统 ConPTY，不复制私有 `conpty.dll`。Windows 进程表 inspection 由随包 `koffi`/`@koromix/koffi-win32-x64` 承担。
 
 ### 4.2 私有 npm（ChatGPT 池没有）
 
-官方 `0.1.1-rc.2` 当前实测：**269** 个私有包，私有 `node_modules` 约 **24.5 MB**（不含 junction 目标）。
+官方 `0.1.1-rc.2` 当前实测：**281** 个私有包，私有 `node_modules` 约 **24.99 MiB**（不含 junction 目标）。
 
 机器可读完整名单：`release-manifest.json` → `privatePackages`。分类摘要：
 
@@ -174,7 +176,7 @@ Windows 极简 preset 不再需要 packager overlay：官方 `0.1.1-rc.2` 起极
 1. 探测 `OpenAI.Codex*` 包（最高版本 + cua_node + chrome.dll）
 2. `Ensure-CgJunctionsFromManifest`（npm junctions）
 3. `Repair-CgJunctions`（修正旧 WindowsApps 路径，含 `@scope/*`）
-4. `Ensure-CgAssetForks`（manifest `cgAssetForks`，缺省 rg + node-pty/build；清理 node-pty 私有 prebuilds/src/…）
+4. 精简私有 `node-pty`：仅保留 `prebuilds\win32-x64` 下两枚 CUA Node ABI `.node` 文件，删除其他架构、PDB、随附 ConPTY DLL/OpenConsole、源码和构建输入；随后由 `Ensure-CgAssetForks` 挂载 rg 与 Electron `node-pty/build`
 5. 同步 owl-host：版本标记 / stub 尺寸不匹配或存在孤儿本地项 → 全量 sync；否则 light repair
 6. 包身份启动 node + owl-stub
 

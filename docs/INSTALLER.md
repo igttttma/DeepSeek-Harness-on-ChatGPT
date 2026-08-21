@@ -49,9 +49,9 @@ dist\portable\DeepSeek-Harness-on-ChatGPT-Portable-<version>-win-x64.zip
 
 ## 启动修复
 
-每次启动都会通过启动器 EXE 请求 UAC，并重新执行同一套 ChatGPT 能力验证和链接校验。包版本号只作为信息记录；兼容性取决于所需路径和 API 是否实际存在。
+每次启动都会通过启动器 EXE 请求 UAC，并重新执行同一套 ChatGPT 能力验证和链接校验。controller 从当前用户的 AppModel Repository 枚举 `OpenAI.Codex_` 包，读取每个包的实际 `PackageRootFolder`，按解析后的版本降序选择最高有效版本；没有写死 ChatGPT 版本或 WindowsApps 路径。包版本号只作为信息记录；兼容性取决于所需路径和 API 是否实际存在。
 
-当前选中的包全名记录在 `parasite-runtime\owl-host\.codex-package-full-name`。ChatGPT 更新或包目录发生变化后，启动流程会重新复制 `owl-stub.exe` 和 `chrome_elf.dll`，重新指向 `owl-host` 链接，修复 manifest 中的全部 junction，然后启动 DSH。任何必要条件缺失都会产生错误并终止启动。
+当前选中的包全名记录在 `parasite-runtime\owl-host\.codex-package-full-name`。ChatGPT 更新或包目录发生变化后，启动流程会以新选中包的实际安装根为目标，重新复制 `owl-stub.exe` 和 `chrome_elf.dll`，重新指向 `owl-host` 链接，修复 manifest 中的全部 junction，然后启动 DSH。任何必要条件缺失都会产生错误并终止启动。
 
 包身份启动通过 launcher 进程内加载 Windows 自带 Appx cmdlet 完成，不启动 `powershell.exe`。官方 DSH 保留 `pwsh-local` 等用户按需功能；只有实际选择这些功能时才可能启动 PowerShell，它们不属于安装器或桌面启动链。
 
@@ -65,7 +65,9 @@ Electron 页面右侧的终端按钮会在当前窗口内打开基于 node-pty �
 
 `dsh.cmd` 始终使用 `DSH_NODE` 执行当前 release 的 `apps\cli\lib\bin.js`。`pnpm.cmd` 使用随包携带的 Corepack 执行固定版本 `pnpm@11.7.0`；首次调用需要网络，之后复用 profile 私有缓存。DSH 内 agent 启动的命令进程继承同一套环境，可以自行安装插件。系统 PATH 和用户已有的全局 `dsh`、Node、pnpm 均不修改，这些命令也不会暴露给应用外的终端。
 
-极简 preset 的持久 shell 走官方 PTY 链路（`@deepseek-ai/dsh-terminal-bash` + `@deepseek-ai/dsh-tool-pwsh-persistent`，win32 使用 `shellDialect: pwsh`）。pwsh 解析回退链为 PowerShell 7 → PATH `pwsh.exe` → Windows 自带 PowerShell 5.1，安装器不携带、不下载、也不预检任何 shell。PTY 的 `node-pty` native `build` 目录启动时从 ChatGPT `app.asar.unpacked` fork（见 manifest `cgAssetForks`），进程 inspection 使用随包 `koffi`，均无需联网。
+极简 preset 的持久 shell 走官方 PTY 链路（`@deepseek-ai/dsh-terminal-bash` + `@deepseek-ai/dsh-tool-pwsh-persistent`，win32 使用 `shellDialect: pwsh`）。pwsh 解析回退链为 PowerShell 7 → PATH `pwsh.exe` → Windows 自带 PowerShell 5.1，安装器不携带、不下载、也不预检任何 shell。
+
+两类 PTY 宿主使用各自匹配的 native ABI：官方持久 pwsh 运行在 ChatGPT CUA Node 下，使用随包保留的 `node-pty\prebuilds\win32-x64\conpty.node` 与 `conpty_console_list.node`；Electron 内置终端使用 manifest 中动态指向当前 ChatGPT `app.asar.unpacked\node_modules\node-pty\build` 的 junction。Electron 端设置 `useConptyDll: false`，直接使用 Windows 系统 ConPTY，因此不复制私有 `conpty.dll`。进程 inspection 使用随包 `koffi`，以上链路均无需联网。
 
 ## 卸载
 

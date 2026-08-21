@@ -93,17 +93,44 @@ function Test-ProviderImportClosure($package, [string]$runtimeRoot) {
         'mistral-conversations.js',
         'openai-completions.js'
     ) | ForEach-Object { ([uri](Join-Path $piRoot $_)).AbsoluteUri }
+    $modules += ([uri](Join-Path $runtimeRoot 'packages\bundle\web-app\lib\index.js')).AbsoluteUri
     $moduleJson = $modules | ConvertTo-Json -Compress
     $markerJson = $markerPath | ConvertTo-Json -Compress
+    $ptyJson = (Join-Path $runtimeRoot 'node_modules\node-pty\lib\index.js') | ConvertTo-Json -Compress
     $script = @"
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 const modules = $moduleJson;
-Promise.all(modules.map((module) => import(module)))
-  .then(() => fs.writeFileSync($markerJson, 'OK'))
-  .catch((error) => {
-    fs.writeFileSync($markerJson, 'ERROR: ' + (error?.stack || error));
-    process.exitCode = 1;
+const require = createRequire(import.meta.url);
+
+async function testPty() {
+  const nodePty = require($ptyJson);
+  await new Promise((resolve, reject) => {
+    const terminal = nodePty.spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'echo DSH_PTY_SMOKE'], {
+      name: 'dumb', cols: 80, rows: 24, cwd: process.cwd(), env: process.env,
+    });
+    let output = '';
+    const timer = setTimeout(() => {
+      try { terminal.kill(); } catch {}
+      reject(new Error('node-pty smoke timed out'));
+    }, 10000);
+    terminal.onData((data) => { output += data; });
+    terminal.onExit(({ exitCode }) => {
+      clearTimeout(timer);
+      if (exitCode === 0 && output.includes('DSH_PTY_SMOKE')) resolve();
+      else reject(new Error('node-pty smoke failed: exit=' + exitCode + ' output=' + JSON.stringify(output)));
+    });
   });
+}
+
+try {
+  await Promise.all(modules.map((module) => import(module)));
+  await testPty();
+  fs.writeFileSync($markerJson, 'OK');
+} catch (error) {
+  fs.writeFileSync($markerJson, 'ERROR: ' + (error?.stack || error));
+  process.exitCode = 1;
+}
 "@
     [IO.File]::WriteAllText($scriptPath, $script, [Text.UTF8Encoding]::new($false))
     try {
@@ -571,14 +598,6 @@ if (Test-Path (Join-Path $Source 'packages')) { Copy-WorkspacePackageTree (Join-
 if (Test-Path (Join-Path $Source 'vendor')) { Copy-WorkspacePackageTree (Join-Path $Source 'vendor') (Join-Path $dshRuntime 'vendor') }
 if (Test-Path (Join-Path $Source 'native')) { Copy-WorkspacePackageTree (Join-Path $Source 'native') (Join-Path $dshRuntime 'native') }
 
-$runtimeOverlay = Join-Path $repoRoot 'src\runtime-overlay'
-if (Test-Path -LiteralPath $runtimeOverlay -PathType Container) {
-    Write-Step 'apply packager-owned Windows runtime overlay'
-    Invoke-Robocopy $runtimeOverlay $dshRuntime @() | Out-Null
-} else {
-    Write-Step 'no packager runtime overlay (upstream minimal preset stays as-is)'
-}
-
 Write-Step 'apply workspace blacklist'
 $excludedWorkspace = @(Remove-BlacklistedWorkspaceFromStage $dshRuntime $Source $blacklist)
 Write-Step ('excluded workspace packages/paths: ' + $excludedWorkspace.Count)
@@ -920,13 +939,28 @@ if (Test-Path -LiteralPath $rgWin) {
 }
 $ptyDir = Join-Path $dstNm 'node-pty'
 if (Test-Path -LiteralPath $ptyDir) {
-    foreach ($drop in @('prebuilds', 'third_party', 'src', 'deps', 'build')) {
+    foreach ($drop in @('third_party', 'src', 'deps', 'build')) {
         $dropPath = Join-Path $ptyDir $drop
         if (Test-Path -LiteralPath $dropPath) {
             $it = Get-Item -LiteralPath $dropPath -Force
             if (-not ($it.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
                 Remove-Item -LiteralPath $dropPath -Recurse -Force -ErrorAction SilentlyContinue
             }
+        }
+    }
+    $prebuilds = Join-Path $ptyDir 'prebuilds'
+    $win32X64 = Join-Path $prebuilds 'win32-x64'
+    $nativeKeep = @('conpty.node', 'conpty_console_list.node')
+    if (-not (Test-Path -LiteralPath $win32X64 -PathType Container)) {
+        throw 'node-pty win32-x64 prebuilds are missing'
+    }
+    Get-ChildItem -LiteralPath $prebuilds -Force | Where-Object { $_.Name -ne 'win32-x64' } |
+        Remove-Item -Recurse -Force
+    Get-ChildItem -LiteralPath $win32X64 -Force | Where-Object { $_.PSIsContainer -or $_.Name -notin $nativeKeep } |
+        Remove-Item -Recurse -Force
+    foreach ($nativeName in $nativeKeep) {
+        if (-not (Test-Path -LiteralPath (Join-Path $win32X64 $nativeName) -PathType Leaf)) {
+            throw ('node-pty native prebuild is missing: ' + $nativeName)
         }
     }
 }
@@ -1104,9 +1138,9 @@ if (-not $SkipCgLink -and $cgNm -and (Test-Path -LiteralPath $cgNm)) {
     Write-Step 'skip applying CG junctions (no local Codex package or -SkipCgLink)'
 }
 
-Write-Step 'verify lazy provider import closure'
+Write-Step 'verify provider and Web bundle import closure'
 Test-ProviderImportClosure $pkg $dshRuntime
-Write-Step 'provider import closure OK'
+Write-Step 'runtime import closure OK'
 
 Write-Step 'stage runtime controller, shell, and launchers'
 $prSrc = Join-Path $repoRoot 'src\runtime'
@@ -1247,7 +1281,7 @@ $manifestObj = [pscustomobject]@{
         'Blacklist (config/release-blacklist.json): drop foreign model subagents, OTel, E2B, Typert generator, build tooling, DOM/test stacks; keep ACP + pi-ai.',
         'Runtime typert protocol/registry/loader remain (required by dsh-base).',
         'CG packages are not shipped; junctions/symlinks are created at start from local OpenAI.Codex.',
-        'Asset forks: rg.exe + node-pty/build (see cgAssetForks). File symlinks need UAC/Developer Mode.',
+        'Asset forks: rg.exe + Electron node-pty/build (see cgAssetForks). File symlinks need UAC/Developer Mode.',
         'Browser-only npm listed in browserOnlyDropped are omitted; UI is apps/web/dist.',
         'privatePackages is the on-disk private set after slim/browser-drop/blacklist/import-graph (junction targets excluded).',
         'Import-graph prune: scripts/lib/prune-unreachable-nm.js seeds from harvested apps/packages/vendor/native and drops unreachable private npm.',

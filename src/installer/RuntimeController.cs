@@ -246,7 +246,7 @@ internal sealed class RuntimeController
     public static int LaunchPackagedNode(string node, string bin, string home, string workingDirectory, int port)
     {
         var environment = CreateDshEnvironment(node, bin, home, workingDirectory);
-        ProcessUtility.StartHidden(node, ProcessUtility.Quote(bin) + " --profile web --port " + port, workingDirectory, environment);
+        ProcessUtility.StartHidden(node, ProcessUtility.Quote(bin) + " --profile web --port " + port + " --no-open", workingDirectory, environment);
         return 0;
     }
 
@@ -332,7 +332,7 @@ internal sealed class RuntimeController
             LinkUtility.EnsureLink(linkPath, targetPath, directory);
         }
         string nodePty = Path.Combine(dsh, "node_modules", "node-pty");
-        foreach (string name in new[] { "prebuilds", "third_party", "src", "deps" })
+        foreach (string name in new[] { "third_party", "src", "deps" })
         {
             string path = Path.Combine(nodePty, name);
             if (Directory.Exists(path) && !LinkUtility.IsReparsePoint(path)) TryDeleteTree(path);

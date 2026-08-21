@@ -1,6 +1,6 @@
 # DeepSeek Harness on ChatGPT
 
-本仓库提供一套 **DeepSeek Harness 体积最小化（41.85 MiB）构建与打包脚本**；构建产物是安装阶段零联网下载依赖的 Windows x64 **增量安装包**与**绿色便携包**，将借用ChatGPT桌面版的运行环境。
+本仓库提供一套 **DeepSeek Harness 体积最小化（42.33 MiB）构建与打包脚本**；构建产物是安装阶段零联网下载依赖的 Windows x64 **增量安装包**与**绿色便携包**，将借用ChatGPT桌面版的运行环境。
 
 ![fig1](./figs/taskbar.png)
 *ChatGPT的折叠图标上竟然出现了...蓝色鲸鱼...?*
@@ -17,9 +17,9 @@
 
 | 方案 | 下载文件 | 静态展开 | 首次启动后实际新增 | 说明 |
 |---|---:|---:|---:|---|
-| 本项目安装器 | **9.22 MiB** | 约 **41.85 MiB** | 约 **48.44 MiB** | 首次启动额外复制 6.59 MiB stub/DLL；链接目标不重复占用磁盘 |
-| 本项目绿色便携 ZIP | **15.76 MiB** | **41.85 MiB** | 约 **48.44 MiB** | 与安装版使用同一静态 payload，不注册系统安装项 |
-| 等价“零依赖”自包含包 | 取决于压缩值 | 约 **684 MiB** | 约 **684 MiB** | 必须额外打入当前实际复用的 642.4 MiB Node/Electron/npm 闭包 |
+| 本项目安装器 | **9.30 MiB** | 约 **42.33 MiB** | 约 **48.91 MiB** | 首次启动额外复制 6.58 MiB stub/DLL；链接目标不重复占用磁盘 |
+| 本项目绿色便携 ZIP | **16.00 MiB** | **42.33 MiB** | 约 **48.91 MiB** | 与安装版使用同一静态 payload，不注册系统安装项 |
+| 等价“零依赖”自包含包 | 取决于压缩值 | 约 **684.7 MiB** | 约 **684.7 MiB** | 必须额外打入当前实际复用的 642.4 MiB Node/Electron/npm 闭包 |
 
 相同功能闭包下，本项目首次启动后的新增占用约为自包含方案的 **1/14**，避免重复存放约 **642.4 MiB** 已由 ChatGPT 提供的文件。Chromium profile、会话和缓存属于运行数据，不计入任何一行。
 
@@ -45,7 +45,7 @@ DeepSeek-Harness-on-ChatGPT-Setup-<version>-win-x64.exe
 
 1. 自动探测当前用户安装的最高版本 `OpenAI.Codex*`。
 2. 验证 Node、Electron、所有 npm junction 和 native asset fork 是否齐全。
-3. 释放约 41.85 MiB 的 DeepSeek Harness 增量 payload。
+3. 释放约 42.33 MiB 的 DeepSeek Harness 增量 payload。
 4. 安装器启动时请求 UAC；安装过程由 C# controller 创建 manifest 声明的 junction/symlink，并同步必要 stub/DLL，不执行运行时 PS1。
 5. 注册标准 Windows 应用、开始菜单、桌面快捷方式和卸载器。
 
@@ -81,7 +81,7 @@ DSH 内 agent 启动的命令进程也会继承同一套 `dsh`、ChatGPT Node �
 
 官方 DSH `0.1.1-rc.2` 起，极简 preset 在 Windows 上不再使用 Bash：`terminal-bash`/`persistent-bash` 在 win32 禁用，官方新增的 `terminal-pwsh`/`persistent-pwsh`（`@deepseek-ai/dsh-tool-pwsh-persistent` + `@deepseek-ai/dsh-terminal-bash`，`shellDialect: pwsh`）在 win32 启用。本项目已移除早期的 packager-owned pipe-bash overlay，直接发布官方 preset，由官方 PTY 链路驱动。
 
-官方 pwsh 解析按顺序查找 PowerShell 7、PATH 上的 `pwsh.exe`，最后回退 Windows 自带 PowerShell 5.1（`System32\WindowsPowerShell\v1.0\powershell.exe`），因此**不要求本机预装 pwsh 7**。PTY 由 `node-pty` 提供：JS 壳随包携带，native `build` 目录在启动时由 controller 按 manifest 从 ChatGPT 桌面版 fork（`node_modules\node-pty\build` → ChatGPT `app.asar.unpacked\...\node-pty\build`），Windows 进程表 inspection 由随包的 `koffi`/`@koromix/koffi-win32-x64` 承担，均不需要联网下载。
+官方 pwsh 解析按顺序查找 PowerShell 7、PATH 上的 `pwsh.exe`，最后回退 Windows 自带 PowerShell 5.1（`System32\WindowsPowerShell\v1.0\powershell.exe`），因此**不要求本机预装 pwsh 7**。PTY 由 `node-pty` 提供，但两类宿主使用各自匹配的 native ABI：DSH 后端的 ChatGPT CUA Node 使用随包保留的 `prebuilds\win32-x64\conpty.node` 与 `conpty_console_list.node`（合计约 0.41 MiB）；Electron 内置终端则由 controller 按 manifest 将 `node_modules\node-pty\build` junction 到当前 ChatGPT 的 `app.asar.unpacked\...\node-pty\build`，并使用 Windows 系统 ConPTY，不复制私有 `conpty.dll`。Windows 进程表 inspection 由随包的 `koffi`/`@koromix/koffi-win32-x64` 承担，均不需要联网下载。
 
 绿色版解压后直接运行 `DeepSeek Harness (on ChatGPT).exe`。启动器 EXE 会以自身名义请求 UAC，再由内置 C# controller 执行相同的依赖验证和链接修复逻辑。
 
@@ -103,7 +103,7 @@ flowchart TB
 2. 不修改上游已跟踪源码、`package.json` 或 lockfile，先执行完整官方构建，再从编译产物和生产依赖中收集运行闭包。
 3. 应用功能黑名单和 Windows x64 平台规则，再按 npm import 图与 workspace 文件图删除不可达内容、测试、文档、source map、声明文件和其他架构 native 文件。
 4. 将闭包与本机 ChatGPT Desktop 比对：可复用内容写入 junction/symlink manifest，只把 ChatGPT 没有的依赖装入私有 `node_modules`。
-5. 运行多 provider import smoke 和 ChatGPT preflight；全部通过后生成静态 stage、安装器与绿色 ZIP。安装包本身不再需要联网补依赖。
+5. 运行多 provider/Web import、实际 ConPTY 启动 smoke 和 ChatGPT preflight；全部通过后生成静态 stage、安装器与绿色 ZIP。安装包本身不再需要联网补依赖。
 
 ## 裁包列表
 

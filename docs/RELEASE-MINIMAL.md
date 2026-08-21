@@ -26,20 +26,20 @@
 7. 删除私有包内声明、source map、`tsbuildinfo`、测试文件、文档和预编译 native 的构建源码
 8. 保留 workspace package exports 与相对 imports，删除不可达的 `lib/types/*.js` 编译副本
 9. 删除 Node ESM 下不会命中的 Google/OpenAI SDK 镜像 bundle
-10. 自动 import Anthropic、Bedrock、Google、Mistral、OpenAI provider；失败则不产出成功 release
+10. 自动 import Anthropic、Bedrock、Google、Mistral、OpenAI provider 与 Web bundle，并实际启动一次 ConPTY；任一检查失败则不产出成功 release
 
 ## 当前体积
 
-官方 DSH `0.1.1-rc.2`、ChatGPT/Codex `26.818.3698.0` 本机实测：
+官方 DSH `0.1.1-rc.2`、ChatGPT/Codex `26.818.3698.0` 本机实测（ChatGPT 版本仅为测试样例，不是运行时约束）：
 
 | 项目 | 体积 |
 |---|---:|
-| 完整 release 本体 | 41.85 MB |
-| `dsh-runtime` | 39.2 MB |
-| 私有 `node_modules` | 24.50 MB |
-| npm 文件级规则额外删除 | 5.92 MB |
-| workspace 编译副本删除 | 7.99 MB |
-| 私有 npm 包数 | 269 |
+| 完整 release 本体 | 42.33 MiB |
+| `dsh-runtime` | 39.69 MiB |
+| 私有 `node_modules` | 24.99 MiB |
+| npm 文件级规则额外删除 | 5.93 MiB |
+| workspace 编译副本删除 | 7.99 MiB |
+| 私有 npm 包数 | 281 |
 
 体积不含 junction 目标与首次运行生成的 `owl-ud-dsh`。机器可读数据见 `dist/stage/dsh-runtime/meta/release-manifest.json`。
 
