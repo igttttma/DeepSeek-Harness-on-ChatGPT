@@ -30,16 +30,16 @@
 
 ## 当前体积
 
-官方 DSH `0.1.0-rc.7`、ChatGPT/Codex `26.814.5167.0` 本机实测：
+官方 DSH `0.1.1-rc.2`、ChatGPT/Codex `26.818.3698.0` 本机实测：
 
 | 项目 | 体积 |
 |---|---:|
-| 完整 release 本体 | 38.98 MB |
-| `dsh-runtime` | 37.45 MB |
-| 私有 `node_modules` | 24.49 MB |
+| 完整 release 本体 | 41.85 MB |
+| `dsh-runtime` | 39.2 MB |
+| 私有 `node_modules` | 24.50 MB |
 | npm 文件级规则额外删除 | 5.92 MB |
-| workspace 编译副本删除 | 7.37 MB |
-| 私有 npm 包数 | 266 |
+| workspace 编译副本删除 | 7.99 MB |
+| 私有 npm 包数 | 269 |
 
 体积不含 junction 目标与首次运行生成的 `owl-ud-dsh`。机器可读数据见 `dist/stage/dsh-runtime/meta/release-manifest.json`。
 

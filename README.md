@@ -1,6 +1,6 @@
 # DeepSeek Harness on ChatGPT
 
-本仓库提供一套 **DeepSeek Harness 体积最小化（41.02 MiB）构建与打包脚本**；构建产物是安装阶段零联网下载依赖的 Windows x64 **增量安装包**与**绿色便携包**，将借用ChatGPT桌面版的运行环境。
+本仓库提供一套 **DeepSeek Harness 体积最小化（41.85 MiB）构建与打包脚本**；构建产物是安装阶段零联网下载依赖的 Windows x64 **增量安装包**与**绿色便携包**，将借用ChatGPT桌面版的运行环境。
 
 ![fig1](./figs/taskbar.png)
 *ChatGPT的折叠图标上竟然出现了...蓝色鲸鱼...?*
@@ -13,15 +13,15 @@
 
 常规“零依赖”桌面包需要再次携带完整 Node、Electron/Chromium 和所有运行依赖。本项目把 ChatGPT Desktop 视为已经存在的共享运行时，只增量安装 DeepSeek Harness 自有文件。
 
-基于本机 `OpenAI.Codex_26.814.5167.0_x64__2p2nqsd0c76g0` 与 DeepSeek Harness `0.1.0-rc.7` 的实测结果：
+基于本机 `OpenAI.Codex_26.818.3698.0_x64__2p2nqsd0c76g0` 与 DeepSeek Harness `0.1.1-rc.2` 的实测结果：
 
 | 方案 | 下载文件 | 静态展开 | 首次启动后实际新增 | 说明 |
 |---|---:|---:|---:|---|
-| 本项目安装器 | **9.12 MiB** | 约 **41.02 MiB** | 约 **47.61 MiB** | 首次启动额外复制 6.59 MiB stub/DLL；链接目标不重复占用磁盘 |
-| 本项目绿色便携 ZIP | **15.49 MiB** | **41.02 MiB** | 约 **47.61 MiB** | 与安装版使用同一静态 payload，不注册系统安装项 |
-| 等价“零依赖”自包含包 | 取决于压缩值 | 约 **694.55 MiB** | 约 **694.55 MiB** | 必须额外打入当前实际复用的 653.53 MiB Node/Electron/npm 闭包 |
+| 本项目安装器 | **9.22 MiB** | 约 **41.85 MiB** | 约 **48.44 MiB** | 首次启动额外复制 6.59 MiB stub/DLL；链接目标不重复占用磁盘 |
+| 本项目绿色便携 ZIP | **15.76 MiB** | **41.85 MiB** | 约 **48.44 MiB** | 与安装版使用同一静态 payload，不注册系统安装项 |
+| 等价“零依赖”自包含包 | 取决于压缩值 | 约 **684 MiB** | 约 **684 MiB** | 必须额外打入当前实际复用的 642.4 MiB Node/Electron/npm 闭包 |
 
-相同功能闭包下，本项目首次启动后的新增占用约为自包含方案的 **1/15**，避免重复存放约 **646.94 MiB** 已由 ChatGPT 提供的文件。Chromium profile、会话和缓存属于运行数据，不计入任何一行。
+相同功能闭包下，本项目首次启动后的新增占用约为自包含方案的 **1/14**，避免重复存放约 **642.4 MiB** 已由 ChatGPT 提供的文件。Chromium profile、会话和缓存属于运行数据，不计入任何一行。
 
 实际复用内容包括：
 
@@ -45,7 +45,7 @@ DeepSeek-Harness-on-ChatGPT-Setup-<version>-win-x64.exe
 
 1. 自动探测当前用户安装的最高版本 `OpenAI.Codex*`。
 2. 验证 Node、Electron、所有 npm junction 和 native asset fork 是否齐全。
-3. 释放约 41.02 MiB 的 DeepSeek Harness 增量 payload。
+3. 释放约 41.85 MiB 的 DeepSeek Harness 增量 payload。
 4. 安装器启动时请求 UAC；安装过程由 C# controller 创建 manifest 声明的 junction/symlink，并同步必要 stub/DLL，不执行运行时 PS1。
 5. 注册标准 Windows 应用、开始菜单、桌面快捷方式和卸载器。
 
@@ -77,11 +77,11 @@ DSH 内 agent 启动的命令进程也会继承同一套 `dsh`、ChatGPT Node �
 
 这些环境变量和命令路由仅对 Electron 壳提供的内置终端及 DSH 内 agent 启动的命令进程有效。程序不会修改系统或用户 `PATH`，也不会把随包的 `dsh`、ChatGPT Node 或 pnpm 暴露给应用外部新开的 CMD、PowerShell 或其他终端。
 
-### Windows 极简模式的 Bash
+### Windows 极简模式的持久 shell
 
-官方极简 preset 的持久 Bash 依赖 POSIX PTY inspection，在 Windows 上无法直接工作。本项目在生成 stage 时以 packager-owned runtime overlay 替换该 preset 的传输层：Bash 通过受管 stdin/stdout 管道保持为每个 Agent 独立的长驻进程，不调用 DSH 的 `spawnTerminal`，因此不触发 win32 PTY inspection。`cd`、导出的环境变量和 shell function 会跨工具调用保留；超时、取消或 shell 退出后会终止进程树，并在下次调用重新创建。
+官方 DSH `0.1.1-rc.2` 起，极简 preset 在 Windows 上不再使用 Bash：`terminal-bash`/`persistent-bash` 在 win32 禁用，官方新增的 `terminal-pwsh`/`persistent-pwsh`（`@deepseek-ai/dsh-tool-pwsh-persistent` + `@deepseek-ai/dsh-terminal-bash`，`shellDialect: pwsh`）在 win32 启用。本项目已移除早期的 packager-owned pipe-bash overlay，直接发布官方 preset，由官方 PTY 链路驱动。
 
-安装包**不携带 Bash，也不检查 Bash 是否存在**。插件以裸命令 `bash` 通过应用继承的本机 `PATH` / `PATHEXT` 解析；解析或启动失败会作为该次 `bash` 工具错误返回，不影响其他 preset。由于底层是管道而非终端，`vim`、交互式 REPL 等要求 TTY 的程序不受支持。
+官方 pwsh 解析按顺序查找 PowerShell 7、PATH 上的 `pwsh.exe`，最后回退 Windows 自带 PowerShell 5.1（`System32\WindowsPowerShell\v1.0\powershell.exe`），因此**不要求本机预装 pwsh 7**。PTY 由 `node-pty` 提供：JS 壳随包携带，native `build` 目录在启动时由 controller 按 manifest 从 ChatGPT 桌面版 fork（`node_modules\node-pty\build` → ChatGPT `app.asar.unpacked\...\node-pty\build`），Windows 进程表 inspection 由随包的 `koffi`/`@koromix/koffi-win32-x64` 承担，均不需要联网下载。
 
 绿色版解压后直接运行 `DeepSeek Harness (on ChatGPT).exe`。启动器 EXE 会以自身名义请求 UAC，再由内置 C# controller 执行相同的依赖验证和链接修复逻辑。
 
@@ -131,10 +131,10 @@ flowchart TB
 | 组件 | 本机验证值 |
 |---|---|
 | Windows | Windows x64 |
-| DeepSeek Harness ref | `dsh-v0.1.0-rc.7` |
-| ChatGPT Desktop version | `26.814.5167.0` |
+| DeepSeek Harness ref | `dsh-v0.1.1-rc.2` |
+| ChatGPT Desktop version | `26.818.3698.0` |
 | pnpm | `11.7.0` |
-| Build Node | `22.15.0` |
+| Build Node | `24.19.0`（PATH 内 ChatGPT cua_node；满足上游 `^22.19.0 || >=24.0.0`） |
 
 ChatGPT 版本号只是验证记录，不是硬编码约束。兼容性由实际路径和 API 能力决定。
 
@@ -143,7 +143,7 @@ ChatGPT 版本号只是验证记录，不是硬编码约束。兼容性由实际
 要求 Windows x64、PowerShell 5.1、Git、Node.js 22+、pnpm 11.7.0，以及当前用户已安装 Microsoft Store ChatGPT Desktop。Inno Setup 6 缺失时通过 `winget` 自动安装。
 
 ```powershell
-# 默认构建 dsh-v0.1.0-rc.7
+# 默认构建 dsh-v0.1.1-rc.2
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 
 # 构建其他官方 ref
@@ -155,12 +155,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
 ```
 
 首次默认构建会 clone 官方源码到 `.work\deepseek-harness`。`-Offline` 禁止 fetch，`-StageOnly` 只生成最小 stage，`-SkipOfficialBuild` 复用已有 `dist\stage` 重新打包。
-
-构建 stage 后，可用本机 Git Bash 对管道式持久 Bash 做独立 smoke；其他 Bash 目录通过 `DSH_TEST_BASH_BIN` 指定：
-
-```powershell
-node .\scripts\smoke-persistent-pipe-bash.mjs .\dist\stage\dsh-runtime
-```
 
 ```text
 dist/

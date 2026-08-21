@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Ref = 'dsh-v0.1.0-rc.7',
+    [string]$Ref = 'dsh-v0.1.1-rc.2',
     [string]$Source = '',
     [string]$Proxy = '',
     [switch]$Offline,

@@ -113,11 +113,11 @@ app/
 
 `node_modules/@deepseek-ai/*` 在 stage 内为 workspace junction，指回 `packages` / `vendor` / `apps`。
 
-Windows 发布还注入一个不属于上游源码的 workspace overlay：`@dsh-on-chatgpt/dsh-tool-bash-persistent-pipe`。它仅包含约 15 KiB JavaScript，以普通 subprocess 管道实现极简 preset 的持久 Bash，复用现有 `dsh-subprocess-local`，不新增 native 文件。Bash 可执行文件只从运行环境的 `PATH` / `PATHEXT` 解析，不属于 release closure 或安装 preflight。
+Windows 极简 preset 不再需要 packager overlay：官方 `0.1.1-rc.2` 起极简模式在 win32 使用官方持久 pwsh（`@deepseek-ai/dsh-tool-pwsh-persistent` + `@deepseek-ai/dsh-terminal-bash`，`shellDialect: pwsh`），Bash 行在 win32 禁用。pwsh 解析按 PowerShell 7 → PATH `pwsh.exe` → Windows 自带 PowerShell 5.1 回退，无需预装 pwsh 7。PTY 由随包私有 `node-pty` 提供，其 native `build` 目录启动时从 ChatGPT 的 `app.asar.unpacked` fork；Windows 进程表 inspection 由随包 `koffi`/`@koromix/koffi-win32-x64` 承担。
 
 ### 4.2 私有 npm（ChatGPT 池没有）
 
-官方 `0.1.0-rc.7` 当前实测：**266** 个私有包，私有 `node_modules` 约 **24.52 MB**（不含 junction 目标）。
+官方 `0.1.1-rc.2` 当前实测：**269** 个私有包，私有 `node_modules` 约 **24.5 MB**（不含 junction 目标）。
 
 机器可读完整名单：`release-manifest.json` → `privatePackages`。分类摘要：
 
